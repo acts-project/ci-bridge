@@ -1,0 +1,7 @@
+ci-bridge
+*.pyc
+.vscode
+.env
+*.json
+*.pem
+.venv
