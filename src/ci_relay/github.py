@@ -1,6 +1,12 @@
 import asyncio
-from typing import Any, Mapping
+import hmac
+import io
+from tracemalloc import start
+from typing import Any, List, Mapping
+import json
 import gidgethub
+import dateutil.parser
+from pprint import pprint
 
 from gidgethub.routing import Router
 from sanic.log import logger
@@ -28,43 +34,345 @@ def create_router():
         repo_url = event.data["repository"]["url"]
         logger.debug("Repo url is %s", repo_url)
 
-        if action not in ("synchronize", "opened"):
+        if action not in ("synchronize", "opened", "reopened"):
             return
 
-        return await handle_synchronize(gh, event.data)
+        return await handle_synchronize(gh, app.ctx.aiohttp_session, event.data)
+
+    @router.register("check_run")
+    async def on_check_run(event: Event, gh: GitHubAPI, app: Sanic):
+        if event.data["action"] != "rerequested":
+            return
+        logger.debug("Received request for check rerun")
+        await handle_rerequest(gh, app.ctx.aiohttp_session, event.data)
+
+    @router.register("check_suite")
+    async def on_check_run(event: Event, gh: GitHubAPI, app: Sanic):
+        if event.data["action"] not in ("requested", "rerequested"):
+            return
+        await handle_check_suite(gh, app.ctx.aiohttp_session, event.data)
 
     return router
 
 
-async def handle_synchronize(gh: GitHubAPI, data: Mapping[str, Any]):
-    pr = data["pull_request"]
-    author = pr["user"]["login"]
-    logger.debug("PR author is %s", author)
+async def get_installed_repos(gh: GitHubAPI) -> List[str]:
+    return await gh.getitem("/installation/repositories")
+
+
+async def is_in_installed_repos(gh: GitHubAPI, repo_id: int) -> bool:
+    repos = await get_installed_repos(gh)
+
+    for repo in repos["repositories"]:
+        if repo["id"] == repo_id:
+            return True
+
+    return False
+
+
+async def add_rejection_status(gh: GitHubAPI, head_sha, repo_url):
+    payload = {
+        "name": "CI Bridge",
+        "status": "completed",
+        "conclusion": "neutral",
+        "head_branch": "",
+        "head_sha": head_sha,
+        "output": {
+            "title": f"Pipeline refused",
+            "summary": "No pipeline was triggered for this user",
+        },
+    }
+
+    logger.debug("Posting check run status to GitHub: %s", f"{repo_url}/check-runs")
+    await gh.post(f"{repo_url}/check-runs", data=payload)
+
+
+async def handle_check_suite(
+    gh: GitHubAPI, session: aiohttp.ClientSession, data: Mapping[str, Any]
+):
+    sender = data["sender"]["login"]
     org = data["organization"]["login"]
-    logger.debug("Org is %s", org)
-    logger.info("Allow team is: %s", config.ALLOW_TEAM)
+    repo_url = data["repository"]["url"]
+    head_sha = data["check_suite"]["head_sha"]
+
+    author_in_team = await get_author_in_team(gh, sender, org)
+    logger.debug(
+        "Is sender %s in team %s: %s", sender, config.ALLOW_TEAM, author_in_team
+    )
+    if not author_in_team:
+        logger.debug("Sender is not in team, stop processing")
+        await add_rejection_status(gh, head_sha=head_sha, repo_url=repo_url)
+        return
+
+    if not await is_in_installed_repos(gh, data["repository"]["id"]):
+        logger.debug(
+            "Repository %s is not among installed repositories",
+            data["repository"]["full_name"],
+        )
+    else:
+        logger.debug(
+            "Repository %s is among installed repositories",
+            data["repository"]["full_name"],
+        )
+
+    await trigger_pipeline(
+        gh,
+        repo_url=repo_url,
+        head_sha=head_sha,
+        session=session,
+        clone_url=data["repository"]["clone_url"],
+        installation_id=data["installation"]["id"],
+    )
+
+    payload = {
+        "name": "CI Bridge",
+        "status": "queued",
+        "head_branch": "",
+        "head_sha": head_sha,
+        "output": {
+            "title": f"Queued on GitLab CI",
+            "summary": "",
+        },
+    }
+
+    logger.debug("Posting check run status to GitHub: %s", f"{repo_url}/check-runs")
+    await gh.post(f"{repo_url}/check-runs", data=payload)
+
+
+async def handle_rerequest(
+    gh: GitHubAPI, session: aiohttp.ClientSession, data: Mapping[str, Any]
+):
+    pipeline_url = data["check_run"]["external_id"]
+    if not pipeline_url.startswith(config.GITLAB_API_URL):
+        raise ValueError("Incompatible external id / pipeline url")
+    logger.debug("Pipeline in question is %s", pipeline_url)
+
+    sender = data["sender"]["login"]
+    org = data["organization"]["login"]
+
+    author_in_team = await get_author_in_team(gh, sender, org)
+
+    logger.debug(
+        "Is sender %s in team %s: %s", sender, config.ALLOW_TEAM, author_in_team
+    )
+
+    if not author_in_team:
+        logger.debug("Sender is not in team, stop processing")
+        return
+
+    if not await is_in_installed_repos(gh, data["repository"]["id"]):
+        logger.debug(
+            "Repository %s is not among installed repositories",
+            data["repository"]["full_name"],
+        )
+    else:
+        logger.debug(
+            "Repository %s is among installed repositories",
+            data["repository"]["full_name"],
+        )
+
+    async with session.post(
+        f"{pipeline_url}/retry",
+        headers={"private-token": config.GITLAB_ACCESS_TOKEN},
+    ) as resp:
+        resp.raise_for_status()
+        logger.debug("Pipeline retry has been posted")
+
+
+async def get_author_in_team(gh: GitHubAPI, author: str, org: str) -> bool:
 
     allow_org, allow_team = config.ALLOW_TEAM.split("/", 1)
 
     if allow_org != org:
         raise ValueError(f"Allow team {config.ALLOW_TEAM} not in org {org}")
 
-    author_in_team = False
     try:
         membership = await gh.getitem(
             f"/orgs/{org}/teams/{allow_team}/memberships/{author}"
         )
-        author_in_team = True
+        return True
     except gidgethub.BadRequest as e:
         if e.status_code != 404:
             raise e
 
-    logger.debug(
-        "Is author %s in team %s: %s", author, config.ALLOW_TEAM, author_in_team
+    return False
+
+
+async def handle_synchronize(
+    gh: GitHubAPI, session: aiohttp.ClientSession, data: Mapping[str, Any]
+):
+    pr = data["pull_request"]
+    author = pr["user"]["login"]
+    source_repo_login = pr["head"]["user"]["login"]
+    logger.debug("PR author is %s, source repo user is %s", author, source_repo_login)
+    org = data["organization"]["login"]
+    logger.debug("Org is %s", org)
+    logger.debug("Allow team is: %s", config.ALLOW_TEAM)
+
+    repo_url = pr["base"]["repo"]["url"]
+    head_sha = pr["head"]["sha"]
+
+    for login, label in [(author, "author"), (source_repo_login, "source repo login")]:
+        login_in_team = await get_author_in_team(gh, login, org)
+
+        logger.debug(
+            "Is %s %s in team %s: %s", label, login, config.ALLOW_TEAM, login_in_team
+        )
+
+        if not login_in_team:
+            logger.debug("%s is not in team, stop processing", label)
+            await add_rejection_status(gh, head_sha=head_sha, repo_url=repo_url)
+            return
+
+        logger.debug("%s is in team", label)
+
+    await trigger_pipeline(
+        gh,
+        session,
+        head_sha=head_sha,
+        repo_url=repo_url,
+        clone_url=pr["head"]["repo"]["clone_url"],
+        installation_id=data["installation"]["id"],
     )
 
-    if not author_in_team:
-        logger.debug("Author is not in team, stop processing")
-        return
 
-    logger.debug("Author is in team, triggering pipeline")
+async def trigger_pipeline(
+    gh, session, head_sha: str, repo_url: str, installation_id: int, clone_url: str
+):
+    logger.debug(
+        "Getting url for CI config from %s",
+        f"{repo_url}/contents/.gitlab-ci.yml?ref={head_sha}",
+    )
+
+    ci_config_file = await gh.getitem(
+        f"{repo_url}/contents/.gitlab-ci.yml?ref={head_sha}"
+    )
+
+    data = {
+        "installation_id": installation_id,
+        "repo_url": repo_url,
+        "head_sha": head_sha,
+        "config_url": ci_config_file["download_url"],
+    }
+    payload = json.dumps(data)
+
+    signature = hmac.new(
+        config.TRIGGER_SECRET, payload.encode(), digestmod="sha512"
+    ).hexdigest()
+
+    async with session.post(
+        config.GITLAB_TRIGGER_URL,
+        data={
+            "token": config.GITLAB_PIPELINE_TRIGGER_TOKEN,
+            "ref": "main",
+            "variables[BRIDGE_PAYLOAD]": payload,
+            "variables[TRIGGER_SIGNATURE]": signature,
+            "variables[CONFIG_URL]": data["config_url"],
+            "variables[CLONE_URL]": clone_url,
+            "variables[HEAD_SHA]": head_sha,
+        },
+    ) as resp:
+        # data = await resp.json()
+        if resp.status == 422:
+            logger.debug("Pipeline was not created: likely yaml error")
+        resp.raise_for_status()
+        logger.debug("Triggered pipeline on gitlab")
+
+
+async def handle_pipeline_status(
+    pipeline, repo_url: str, head_sha: str, project, gh: GitHubAPI, app
+):
+    status = pipeline["status"]
+
+    full_pipeline_url = (
+        f"{config.GITLAB_API_URL}/projects/{project['id']}/pipelines/{pipeline['id']}"
+    )
+    logger.debug("Pipeline %s is reported as %s", full_pipeline_url, status)
+
+    # fetch full pipeline for more info
+    async with app.ctx.aiohttp_session.get(full_pipeline_url) as resp:
+        resp.raise_for_status()
+        full_pipeline = await resp.json()
+
+    status_map = {
+        "created",
+        "waiting_for_resource",
+        "preparing",
+        "pending",
+        "running",
+        "success",
+        "failed",
+        "canceled",
+        "skipped",
+        "manual",
+        "scheduled",
+    }
+
+    if status in (
+        "created",
+        "waiting_for_resource",
+        "preparing",
+        "pending",
+        "manual",
+        "scheduled",
+    ):
+        check_status = "queued"
+    elif status in ("running",):
+        check_status = "in_progress"
+    elif status in ("success", "failed", "canceled", "skipped"):
+        check_status = "completed"
+    else:
+        raise ValueError(f"Unknown status {status}")
+
+    logger.debug("Status: %s => %s", status, check_status)
+
+    if status == "success":
+        conclusion = "success"
+    elif status == "failed":
+        conclusion = "failure"
+    elif status == "canceled":
+        conclusion = "cancelled"
+    else:
+        conclusion = "neutral"
+
+    logger.debug("Status to conclusion: %s => %s", status, conclusion)
+
+    started_at = full_pipeline["started_at"]
+    completed_at = full_pipeline["finished_at"]
+
+    payload = {
+        "name": "CI Bridge",
+        "status": check_status,
+        "head_branch": "",
+        "head_sha": head_sha,
+        "output": {
+            "title": f"Running on GitLab CI: {status.upper()}",
+            "summary": (
+                "This check triggered pipeline "
+                f"[{project['path_with_namespace']}/{full_pipeline['iid']}]({full_pipeline['web_url']})\n"
+                f"Status: {status.upper()}\n"
+                f"Created at: {full_pipeline['created_at']}\n"
+                f"Started at: {started_at}\n"
+                f"Finished at: {completed_at}\n"
+            ),
+        },
+        "details_url": full_pipeline["web_url"],
+        "external_id": full_pipeline_url,
+    }
+
+    if status == "failed" and full_pipeline["yaml_errors"] is not None:
+        payload["output"][
+            "summary"
+        ] += f"\n\nError in YAML:\n{full_pipeline['yaml_errors']}"
+
+    if started_at is not None:
+        payload["started_at"] = started_at
+    if completed_at is not None and check_status == "completed":
+        payload["completed_at"] = completed_at
+        payload["conclusion"] = conclusion
+
+    # repo_url = trigger["head"]["repo"]["url"]
+    # repo_url = trigger["base"]["repo"]["url"]
+
+    logger.debug("Posting check run status to GitHub: %s", f"{repo_url}/check-runs")
+
+    await gh.post(f"{repo_url}/check-runs", data=payload)

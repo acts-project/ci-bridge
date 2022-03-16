@@ -293,6 +293,17 @@ six = "*"
 sseclient = "0.0.24"
 
 [[package]]
+name = "python-dateutil"
+version = "2.8.2"
+description = "Extensions to the standard Python datetime module"
+category = "main"
+optional = false
+python-versions = "!=3.0.*,!=3.1.*,!=3.2.*,>=2.7"
+
+[package.dependencies]
+six = ">=1.5"
+
+[[package]]
 name = "python-dotenv"
 version = "0.19.2"
 description = "Read key-value pairs from a .env file and set them as environment variables"
@@ -454,7 +465,7 @@ multidict = ">=4.0"
 [metadata]
 lock-version = "1.1"
 python-versions = "^3.9"
-content-hash = "a299a3533a7138cbd3bb1eacc02d32453fa2add3cf136b2d350c0eda3d0f22df"
+content-hash = "54b9d20658de66c1283e404ccfe0a8a9c9711d447a121d8bb495ca39650f33d3"
 
 [metadata.files]
 aiofiles = [
@@ -872,6 +883,10 @@ pyjwt = [
 pysmee = [
     {file = "pysmee-0.1.1-py2.py3-none-any.whl", hash = "sha256:3b6060ded55bde4c0f8b6eb865ceeb2d87d02d02bae53afb38da761b50c72fa9"},
     {file = "pysmee-0.1.1.tar.gz", hash = "sha256:255a46cd8eca3eb6f652c44cb6aba98734d6f2bd9d884995c5e0fb88a6c925b9"},
+]
+python-dateutil = [
+    {file = "python-dateutil-2.8.2.tar.gz", hash = "sha256:0123cacc1627ae19ddf3c27a5de5bd67ee4586fbdd6440d9748f8abb483d3e86"},
+    {file = "python_dateutil-2.8.2-py2.py3-none-any.whl", hash = "sha256:961d03dc3453ebbc59dbdea9e4e11c5651520a876d0f4db161e8674aae935da9"},
 ]
 python-dotenv = [
     {file = "python-dotenv-0.19.2.tar.gz", hash = "sha256:a5de49a31e953b45ff2d2fd434bbc2670e8db5273606c1e737cc6b93eff3655f"},
