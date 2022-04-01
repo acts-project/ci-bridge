@@ -47,10 +47,18 @@ def create_router():
         await handle_rerequest(gh, app.ctx.aiohttp_session, event.data)
 
     @router.register("check_suite")
-    async def on_check_run(event: Event, gh: GitHubAPI, app: Sanic):
-        if event.data["action"] not in ("requested", "rerequested"):
+    async def on_check_suite(event: Event, gh: GitHubAPI, app: Sanic):
+        if event.data["action"] not in (
+            #  "requested",
+            "rerequested",
+        ):
             return
         await handle_check_suite(gh, app.ctx.aiohttp_session, event.data)
+
+    @router.register("push")
+    async def on_push(event: Event, gh: GitHubAPI, app: Sanic):
+        logger.debug("Received push event")
+        await handle_push(gh, app.ctx.aiohttp_session, event.data)
 
     return router
 
@@ -82,7 +90,11 @@ async def add_rejection_status(gh: GitHubAPI, head_sha, repo_url):
         },
     }
 
-    logger.debug("Posting check run status to GitHub: %s", f"{repo_url}/check-runs")
+    logger.debug(
+        "Posting check run status for sha %s to GitHub: %s",
+        head_sha,
+        f"{repo_url}/check-runs",
+    )
     await gh.post(f"{repo_url}/check-runs", data=payload)
 
 
@@ -93,6 +105,11 @@ async def handle_check_suite(
     org = data["organization"]["login"]
     repo_url = data["repository"]["url"]
     head_sha = data["check_suite"]["head_sha"]
+    head_branch = data["check_suite"]["head_branch"]
+
+    if data["check_suite"]["app"]["id"] != config.APP_ID:
+        logger.debug("Ignoring rerequest for check suite from other app")
+        return
 
     author_in_team = await get_author_in_team(gh, sender, org)
     logger.debug(
@@ -102,6 +119,44 @@ async def handle_check_suite(
         logger.debug("Sender is not in team, stop processing")
         await add_rejection_status(gh, head_sha=head_sha, repo_url=repo_url)
         return
+
+    if not await is_in_installed_repos(gh, data["repository"]["id"]):
+        logger.debug(
+            "Repository %s is not among installed repositories",
+            data["repository"]["full_name"],
+        )
+    else:
+        logger.debug(
+            "Repository %s is among installed repositories",
+            data["repository"]["full_name"],
+        )
+
+    await trigger_pipeline(
+        gh,
+        repo_url=repo_url,
+        head_sha=head_sha,
+        session=session,
+        clone_url=data["repository"]["clone_url"],
+        installation_id=data["installation"]["id"],
+    )
+
+async def handle_push(
+    gh: GitHubAPI, session: aiohttp.ClientSession, data: Mapping[str, Any]
+):
+    sender = data["sender"]["login"]
+    org = data["organization"]["login"]
+    repo_url = data["repository"]["url"]
+    if repo_url.startswith("https://github.com/"):
+        repo_url = f"https://api.github.com/repos/{data['repository']['full_name']}"
+    head_sha = data["after"]
+
+    for user in sender, data["pusher"]["name"]:
+        user_in_team = await get_author_in_team(gh, user, org)
+        logger.debug("Is user %s in team %s: %s", user, config.ALLOW_TEAM, user_in_team)
+        if not user_in_team:
+            logger.debug("User is not in team, stop processing")
+            await add_rejection_status(gh, head_sha=head_sha, repo_url=repo_url)
+            return
 
     if not await is_in_installed_repos(gh, data["repository"]["id"]):
         logger.debug(
@@ -134,8 +189,13 @@ async def handle_check_suite(
         },
     }
 
-    logger.debug("Posting check run status to GitHub: %s", f"{repo_url}/check-runs")
-    await gh.post(f"{repo_url}/check-runs", data=payload)
+    logger.debug(
+        "Posting check run status for sha %s to GitHub: %s",
+        head_sha,
+        f"{repo_url}/check-runs",
+    )
+
+    res = await gh.post(f"{repo_url}/check-runs", data=payload)
 
 
 async def handle_rerequest(
@@ -342,10 +402,10 @@ async def handle_pipeline_status(
     payload = {
         "name": "CI Bridge",
         "status": check_status,
-        "head_branch": "",
+        #  "head_branch": "",
         "head_sha": head_sha,
         "output": {
-            "title": f"Running on GitLab CI: {status.upper()}",
+            "title": f"GitLab CI: {status.upper()}",
             "summary": (
                 "This check triggered pipeline "
                 f"[{project['path_with_namespace']}/{full_pipeline['iid']}]({full_pipeline['web_url']})\n"
@@ -373,6 +433,10 @@ async def handle_pipeline_status(
     # repo_url = trigger["head"]["repo"]["url"]
     # repo_url = trigger["base"]["repo"]["url"]
 
-    logger.debug("Posting check run status to GitHub: %s", f"{repo_url}/check-runs")
+    logger.debug(
+        "Posting check run status for sha %s to GitHub: %s",
+        head_sha,
+        f"{repo_url}/check-runs",
+    )
 
     await gh.post(f"{repo_url}/check-runs", data=payload)
