@@ -153,12 +153,57 @@ async def handle_check_suite(
             data["repository"]["full_name"],
         )
 
+    # need to determine original clone url
+
+    check_runs_resp = await gh.getitem(data["check_suite"]["check_runs_url"])
+    check_runs = check_runs_resp["check_runs"]
+    if len(check_runs) == 0:
+        logger.debug("Tried to rerequest check suite without jobs, cannot determine original check suite parameters")
+        return
+
+    logger.debug("Have %d check runs for suite", len(check_runs)) 
+
+    job_url = check_runs[0]["external_id"]
+    logger.debug("Query job url %s", job_url)
+
+    async with session.get(
+        job_url,
+        headers={"private-token": config.GITLAB_ACCESS_TOKEN},
+    ) as resp:
+        resp.raise_for_status()
+
+        job_data = await resp.json()
+
+    pipeline_id = job_data["pipeline"]["id"]
+    project_id = job_data["pipeline"]["project_id"]
+
+    pipeline_vars = await gitlab.get_pipeline_variables(project_id, pipeline_id, session)
+
+    bridge_payload = pipeline_vars["BRIDGE_PAYLOAD"]
+    signature = pipeline_vars["TRIGGER_SIGNATURE"]
+
+    expected_signature = hmac.new(
+        config.TRIGGER_SECRET,
+        bridge_payload.encode(),
+        digestmod="sha512",
+    ).hexdigest()
+    if not hmac.compare_digest(expected_signature, signature):
+        logger.error("Signatures do not match for pipeline behind check suite")
+        raise ValueError("Signature mismatch")
+
+    bridge_payload = json.loads(bridge_payload)
+
+    clone_url = bridge_payload["clone_url"]
+    head_sha = bridge_payload["head_sha"]
+    logger.debug("Clone url of previous job was: %s", clone_url)
+    logger.debug("Head sha previous job was: %s", head_sha)
+
     await trigger_pipeline(
         gh,
         repo_url=repo_url,
         head_sha=head_sha,
         session=session,
-        clone_url=data["repository"]["clone_url"],
+        clone_url=clone_url,
         installation_id=data["installation"]["id"],
     )
 
@@ -252,6 +297,7 @@ async def handle_rerequest(
             data["repository"]["full_name"],
         )
 
+
     async with session.post(
         f"{job_url}/retry",
         headers={"private-token": config.GITLAB_ACCESS_TOKEN},
@@ -334,6 +380,7 @@ async def trigger_pipeline(
         "repo_url": repo_url,
         "head_sha": head_sha,
         "config_url": ci_config_file["download_url"],
+        "clone_url": clone_url,
     }
     payload = json.dumps(data)
 
