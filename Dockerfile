@@ -1,7 +1,7 @@
 FROM python:3.10-slim
 
 ENV USER=ci_relay
-RUN adduser $USER
+RUN adduser --gecos "" --disabled-password $USER
 USER $USER
 
 COPY pyproject.toml .
