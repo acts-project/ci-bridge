@@ -7,6 +7,7 @@ import json
 import gidgethub
 import dateutil.parser
 from pprint import pprint
+import textwrap
 
 from gidgethub.routing import Router
 from sanic.log import logger
@@ -16,7 +17,7 @@ from gidgethub.sansio import Event
 from gidgethub import BadRequest
 import aiohttp
 
-from ci_relay import config
+from ci_relay import config, gitlab
 
 
 def create_router():
@@ -87,6 +88,27 @@ async def add_rejection_status(gh: GitHubAPI, head_sha, repo_url):
         "output": {
             "title": f"Pipeline refused",
             "summary": "No pipeline was triggered for this user",
+        },
+    }
+
+    logger.debug(
+        "Posting check run status for sha %s to GitHub: %s",
+        head_sha,
+        f"{repo_url}/check-runs",
+    )
+    await gh.post(f"{repo_url}/check-runs", data=payload)
+
+
+async def add_failure_status(gh: GitHubAPI, head_sha, repo_url):
+    payload = {
+        "name": "CI Bridge",
+        "status": "completed",
+        "conclusion": "failure",
+        "head_branch": "",
+        "head_sha": head_sha,
+        "output": {
+            "title": f"Pipeline could not be created",
+            "summary": "This is likely a YAML error.",
         },
     }
 
@@ -231,11 +253,11 @@ async def handle_rerequest(
         )
 
     async with session.post(
-        f"{pipeline_url}/retry",
+        f"{job_url}/retry",
         headers={"private-token": config.GITLAB_ACCESS_TOKEN},
     ) as resp:
         resp.raise_for_status()
-        logger.debug("Pipeline retry has been posted")
+        logger.debug("Job retry has been posted")
 
 
 async def get_author_in_team(gh: GitHubAPI, author: str, org: str) -> bool:
@@ -334,24 +356,19 @@ async def trigger_pipeline(
         # data = await resp.json()
         if resp.status == 422:
             logger.debug("Pipeline was not created: likely yaml error")
-        resp.raise_for_status()
-        logger.debug("Triggered pipeline on gitlab")
+            await add_failure_status(gh, head_sha=head_sha, repo_url=repo_url)
+        else:
+            resp.raise_for_status()
+            logger.debug("Triggered pipeline on gitlab")
 
 
 async def handle_pipeline_status(
-    pipeline, repo_url: str, head_sha: str, project, gh: GitHubAPI, app
+    pipeline, job, repo_url: str, head_sha: str, project, gh: GitHubAPI, app
 ):
-    status = pipeline["status"]
+    status = job["status"]
 
-    full_pipeline_url = (
-        f"{config.GITLAB_API_URL}/projects/{project['id']}/pipelines/{pipeline['id']}"
-    )
-    logger.debug("Pipeline %s is reported as %s", full_pipeline_url, status)
+    logger.debug("Job %d is reported as '%s'", pipeline["id"], status)
 
-    # fetch full pipeline for more info
-    async with app.ctx.aiohttp_session.get(full_pipeline_url) as resp:
-        resp.raise_for_status()
-        full_pipeline = await resp.json()
 
     status_map = {
         "created",
@@ -396,39 +413,78 @@ async def handle_pipeline_status(
 
     logger.debug("Status to conclusion: %s => %s", status, conclusion)
 
-    started_at = full_pipeline["started_at"]
-    completed_at = full_pipeline["finished_at"]
+    started_at = job["started_at"]
+    completed_at = job["finished_at"]
+
+    log = await gitlab.get_job_log(
+        project["id"], job["id"], session=app.ctx.aiohttp_session
+    )
+
+    github_limit = 65535 - 200  # tolerance
+    logger.debug("Log length: %d (max %d)", len(log), github_limit)
+
+    lines = log.split("\n")
+
+    if len(log) > github_limit:
+        selected_lines = []
+        size = 0
+        rlines = list(reversed(lines))
+        for line in rlines:
+            if size + len(line) >= github_limit:
+                break
+
+            selected_lines.append(line)
+            #  logger.debug("%d => %d", size, size + len(line))
+            size += len(line) + 1  # +1 for newline
+
+        log = f"Showing last {len(selected_lines)} out of {len(lines)} total lines\n\n"
+        lines = list(reversed(selected_lines))
+    else:
+        log = ""
+
+    raw_lines = lines
+    lines = []
+    for line in raw_lines:
+        if len(line) > 150:
+            lines.append(textwrap.fill(line, width=150))
+        else:
+            lines.append(line)
+
+    log += "\n".join(lines)
+    logger.debug("Log is: %d characters", len(log))
 
     payload = {
-        "name": "CI Bridge",
+        "name": f"CI Bridge / {job['name']}",
         "status": check_status,
         #  "head_branch": "",
         "head_sha": head_sha,
         "output": {
             "title": f"GitLab CI: {status.upper()}",
             "summary": (
-                "This check triggered pipeline "
-                f"[{project['path_with_namespace']}/{full_pipeline['iid']}]({full_pipeline['web_url']})\n"
+                "This check triggered job "
+                f"[{project['path_with_namespace']}/{job['id']}]({job['web_url']})\n"
+                "in pipeline "
+                f"[{project['path_with_namespace']}/{pipeline['iid']}]({pipeline['web_url']})\n"
                 f"Status: {status.upper()}\n"
-                f"Created at: {full_pipeline['created_at']}\n"
+                f"Created at: {job['created_at']}\n"
                 f"Started at: {started_at}\n"
                 f"Finished at: {completed_at}\n"
             ),
         },
-        "details_url": full_pipeline["web_url"],
-        "external_id": full_pipeline_url,
+        "details_url": job["web_url"],
+        "external_id": gitlab.get_job_url(project["id"], job["id"]),
     }
 
-    if status == "failed" and full_pipeline["yaml_errors"] is not None:
-        payload["output"][
-            "summary"
-        ] += f"\n\nError in YAML:\n{full_pipeline['yaml_errors']}"
+    if status == "failed" and pipeline["yaml_errors"] is not None:
+        payload["output"]["summary"] += f"\n\nError in YAML:\n{pipeline['yaml_errors']}"
 
     if started_at is not None:
         payload["started_at"] = started_at
     if completed_at is not None and check_status == "completed":
         payload["completed_at"] = completed_at
         payload["conclusion"] = conclusion
+
+        payload["output"]["text"] = f"```\n{log}\n```"
 
     # repo_url = trigger["head"]["repo"]["url"]
     # repo_url = trigger["base"]["repo"]["url"]

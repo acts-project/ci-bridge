@@ -9,8 +9,9 @@ from gidgethub import aiohttp as gh_aiohttp
 from sanic.log import logger
 import cachetools
 import json
+import asyncio
 
-from ci_relay import config
+from ci_relay import config, gitlab
 from ci_relay.github import create_router, handle_pipeline_status
 
 
@@ -62,20 +63,36 @@ def create_app():
     async def github(request):
         logger.debug("Webhook received")
         if request.headers.get("X-Gitlab-Event") == "Pipeline Hook":
-            # this is a ping back!
             logger.debug("Received pipeline report")
+        elif request.headers.get("X-Gitlab-Event") == "Job Hook":
+            # this is a ping back!
+            logger.debug("Received job report")
             if request.headers["X-Gitlab-Token"] != config.GITLAB_WEBHOOK_SECRET:
                 raise ValueError("Webhook has invalid token")
 
             payload = request.json
 
-            if payload["object_kind"] != "pipeline":
-                raise ValueError("Object is not pipeline")
+            if payload["object_kind"] != "build":
+                raise ValueError("Object is not a build")
 
-            variables = {
-                var["key"]: var["value"]
-                for var in payload["object_attributes"]["variables"]
-            }
+            project_id = payload["project_id"]
+            pipeline_id = payload["pipeline_id"]
+
+            pipeline, variables, project, job = await asyncio.gather(
+                gitlab.get_pipeline(
+                    project_id, pipeline_id, session=app.ctx.aiohttp_session
+                ),
+                gitlab.get_pipeline_variables(
+                    project_id, pipeline_id, session=app.ctx.aiohttp_session
+                ),
+                gitlab.get_project(project_id, session=app.ctx.aiohttp_session),
+                gitlab.get_job(
+                    project_id, payload["build_id"], session=app.ctx.aiohttp_session
+                ),
+            )
+
+            #  logger.debug("%s", pipeline)
+            #  logger.debug("%s", variables)
 
             bridge_payload = variables["BRIDGE_PAYLOAD"]
             signature = variables["TRIGGER_SIGNATURE"]
@@ -94,13 +111,11 @@ def create_app():
             installation_id = bridge_payload["installation_id"]
             logger.debug("Installation id: %s", installation_id)
 
-            project = payload["project"]
-
             gh = await client_for_installation(app, installation_id)
-            # trigger = trigger_payload["pull_request"]
 
             await handle_pipeline_status(
-                pipeline=payload["object_attributes"],
+                pipeline=pipeline,
+                job=job,
                 project=project,
                 repo_url=bridge_payload["repo_url"],
                 head_sha=bridge_payload["head_sha"],
