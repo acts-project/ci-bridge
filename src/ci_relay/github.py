@@ -268,10 +268,10 @@ async def handle_push(
 async def handle_rerequest(
     gh: GitHubAPI, session: aiohttp.ClientSession, data: Mapping[str, Any]
 ):
-    pipeline_url = data["check_run"]["external_id"]
-    if not pipeline_url.startswith(config.GITLAB_API_URL):
-        raise ValueError("Incompatible external id / pipeline url")
-    logger.debug("Pipeline in question is %s", pipeline_url)
+    job_url = data["check_run"]["external_id"]
+    if not job_url.startswith(config.GITLAB_API_URL):
+        raise ValueError("Incompatible external id / job url")
+    logger.debug("Pipeline in question is %s", job_url)
 
     sender = data["sender"]["login"]
     org = data["organization"]["login"]
