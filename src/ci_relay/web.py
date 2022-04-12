@@ -57,7 +57,7 @@ def create_app():
 
     @app.route("/")
     async def index(request):
-        return response.text("hallo")
+        return response.text("ok")
 
     @app.route("/webhook", methods=["POST"])
     async def github(request):
