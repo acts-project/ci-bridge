@@ -11,5 +11,6 @@ COPY src src
 RUN pip install . uvicorn[standard]
 
 COPY CHECKS .
+COPY Procfile .
 ENV PATH=/home/$USER/.local/bin:$PATH
 
