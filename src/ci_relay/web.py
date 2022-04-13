@@ -38,9 +38,7 @@ def create_app():
 
     app = Sanic("ci-relay")
     app.update_config(config)
-    # app.logger = logging.getLogger(__name__)
-    # if app.debug:
-    # app.logger.setLevel(logging.DEBUG)
+    logger.setLevel(config.OVERRIDE_LOGGING)
 
     app.ctx.cache = cachetools.LRUCache(maxsize=500)
     app.ctx.github_router = create_router()
@@ -57,6 +55,7 @@ def create_app():
 
     @app.route("/")
     async def index(request):
+        logger.debug("status check")
         return response.text("ok")
 
     @app.route("/webhook", methods=["POST"])

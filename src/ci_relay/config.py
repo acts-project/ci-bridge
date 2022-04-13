@@ -1,5 +1,6 @@
 import os
 import dotenv
+import logging
 
 dotenv.load_dotenv()
 
@@ -17,3 +18,5 @@ GITLAB_API_URL = os.environ["GITLAB_API_URL"]
 TRIGGER_SECRET = os.environ["TRIGGER_SECRET"].encode()
 
 GITLAB_WEBHOOK_SECRET = os.environ["GITLAB_WEBHOOK_SECRET"]
+
+OVERRIDE_LOGGING = logging.getLevelName(os.environ.get("OVERRIDE_LOGGING", "WARNING"))
