@@ -322,6 +322,9 @@ async def get_author_in_team(gh: GitHubAPI, author: str, org: str) -> bool:
         if e.status_code != 404:
             raise e
 
+    if author in config.EXTRA_USERS:
+        return True
+
     return False
 
 

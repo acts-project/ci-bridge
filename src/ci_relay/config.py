@@ -20,3 +20,5 @@ TRIGGER_SECRET = os.environ["TRIGGER_SECRET"].encode()
 GITLAB_WEBHOOK_SECRET = os.environ["GITLAB_WEBHOOK_SECRET"]
 
 OVERRIDE_LOGGING = logging.getLevelName(os.environ.get("OVERRIDE_LOGGING", "WARNING"))
+
+EXTRA_USERS = os.environ.get("EXTRA_USERS", "").split(",")
