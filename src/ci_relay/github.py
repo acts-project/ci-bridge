@@ -249,24 +249,24 @@ async def handle_push(
         installation_id=data["installation"]["id"],
     )
 
-    payload = {
-        "name": "CI Bridge",
-        "status": "queued",
-        "head_branch": "",
-        "head_sha": head_sha,
-        "output": {
-            "title": f"Queued on GitLab CI",
-            "summary": "",
-        },
-    }
+    #  payload = {
+        #  "name": "CI Bridge",
+        #  "status": "queued",
+        #  "head_branch": "",
+        #  "head_sha": head_sha,
+        #  "output": {
+            #  "title": f"Queued on GitLab CI",
+            #  "summary": "",
+        #  },
+    #  }
 
-    logger.debug(
-        "Posting check run status for sha %s to GitHub: %s",
-        head_sha,
-        f"{repo_url}/check-runs",
-    )
+    #  logger.debug(
+        #  "Posting check run status for sha %s to GitHub: %s",
+        #  head_sha,
+        #  f"{repo_url}/check-runs",
+    #  )
 
-    res = await gh.post(f"{repo_url}/check-runs", data=payload)
+    #  res = await gh.post(f"{repo_url}/check-runs", data=payload)
 
 
 async def handle_rerequest(
