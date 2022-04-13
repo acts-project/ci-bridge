@@ -164,6 +164,10 @@ async def handle_check_suite(
     logger.debug("Have %d check runs for suite", len(check_runs)) 
 
     job_url = check_runs[0]["external_id"]
+    if job_url == "":
+        logger.debug("Job does not have external url attached, can't retry")
+        return
+
     logger.debug("Query job url %s", job_url)
 
     async with session.get(
