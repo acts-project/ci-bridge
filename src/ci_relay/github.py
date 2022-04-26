@@ -317,6 +317,10 @@ async def get_author_in_team(gh: GitHubAPI, author: str, org: str) -> bool:
     if allow_org != org:
         raise ValueError(f"Allow team {config.ALLOW_TEAM} not in org {org}")
 
+    if author == org:
+        logger.debug("Author IS the org, continue")
+        return True
+
     try:
         membership = await gh.getitem(
             f"/orgs/{org}/teams/{allow_team}/memberships/{author}"
