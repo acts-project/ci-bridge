@@ -199,7 +199,7 @@ async def handle_check_suite(
 
     clone_url = bridge_payload["clone_url"]
     head_sha = bridge_payload["head_sha"]
-    base_ref = bridge_payload.get("base_ref", "") # defaulted in case payloads without base_ref are still in flight
+    head_ref = bridge_payload.get("head_ref", "") # defaulted in case payloads without base_ref are still in flight
     logger.debug("Clone url of previous job was: %s", clone_url)
     logger.debug("Head sha previous job was: %s", head_sha)
 
@@ -210,7 +210,7 @@ async def handle_check_suite(
         session=session,
         clone_url=clone_url,
         installation_id=data["installation"]["id"],
-        base_ref=base_ref,
+        head_ref=head_ref,
     )
 
 async def handle_push(
@@ -249,7 +249,7 @@ async def handle_push(
         session=session,
         clone_url=data["repository"]["clone_url"],
         installation_id=data["installation"]["id"],
-        base_ref=data["ref"],
+        head_ref=data["ref"],
     )
 
     #  payload = {
@@ -374,12 +374,12 @@ async def handle_synchronize(
         repo_url=repo_url,
         clone_url=pr["head"]["repo"]["clone_url"],
         installation_id=data["installation"]["id"],
-        base_ref=pr["base"]["ref"]
+        head_ref=pr["head"]["ref"]
     )
 
 
 async def trigger_pipeline(
-    gh, session, head_sha: str, repo_url: str, installation_id: int, clone_url: str, base_ref: str
+    gh, session, head_sha: str, repo_url: str, installation_id: int, clone_url: str, head_ref: str
 ):
     logger.debug(
         "Getting url for CI config from %s",
@@ -396,7 +396,7 @@ async def trigger_pipeline(
         "head_sha": head_sha,
         "config_url": ci_config_file["download_url"],
         "clone_url": clone_url,
-        "base_ref": base_ref,
+        "head_ref": head_ref,
     }
     payload = json.dumps(data)
 
@@ -414,7 +414,7 @@ async def trigger_pipeline(
             "variables[CONFIG_URL]": data["config_url"],
             "variables[CLONE_URL]": clone_url,
             "variables[HEAD_SHA]": head_sha,
-            "variables[BASE_REF]": base_ref,
+            "variables[HEAD_REF]": head_ref,
         },
     ) as resp:
         # data = await resp.json()
