@@ -58,9 +58,7 @@ def create_app():
         logger.debug("status check")
         return response.text("ok")
 
-    @app.route("/webhook", methods=["POST"])
-    async def github(request):
-        logger.debug("Webhook received")
+    async def handle_webhook(request):
         if request.headers.get("X-Gitlab-Event") == "Pipeline Hook":
             logger.debug("Received pipeline report")
         elif request.headers.get("X-Gitlab-Event") == "Job Hook":
@@ -138,6 +136,13 @@ def create_app():
 
             logger.debug("Dispatching event %s", event.event)
             await app.ctx.github_router.dispatch(event, gh, app=app)
+
+
+    @app.route("/webhook", methods=["POST"])
+    async def github(request):
+        logger.debug("Webhook received")
+
+        app.add_task(handle_webhook(request))
 
         return response.empty(200)
 
