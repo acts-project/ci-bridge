@@ -536,13 +536,16 @@ async def handle_pipeline_status(
     log += "\n".join(lines)
     logger.debug("Log is: %d characters", len(log))
 
+    title = f"GitLab CI: {status.upper()}"
+    if status == "failed" and job["allow_failure"]:
+        title += "(allowed failure)"
     payload = {
         "name": f"CI Bridge / {job['name']}",
         "status": check_status,
         #  "head_branch": "",
         "head_sha": head_sha,
         "output": {
-            "title": f"GitLab CI: {status.upper()}",
+            "title": title,
             "summary": (
                 "This check triggered job "
                 f"[{project['path_with_namespace']}/{job['id']}]({job['web_url']})\n"
