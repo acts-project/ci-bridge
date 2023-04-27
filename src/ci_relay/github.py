@@ -538,7 +538,7 @@ async def handle_pipeline_status(
 
     title = f"GitLab CI: {status.upper()}"
     if status == "failed" and job["allow_failure"]:
-        title += "(allowed failure)"
+        title += " [allowed failure]"
     payload = {
         "name": f"CI Bridge / {job['name']}",
         "status": check_status,
