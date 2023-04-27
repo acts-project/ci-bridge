@@ -158,10 +158,12 @@ async def handle_check_suite(
     check_runs_resp = await gh.getitem(data["check_suite"]["check_runs_url"])
     check_runs = check_runs_resp["check_runs"]
     if len(check_runs) == 0:
-        logger.debug("Tried to rerequest check suite without jobs, cannot determine original check suite parameters")
+        logger.debug(
+            "Tried to rerequest check suite without jobs, cannot determine original check suite parameters"
+        )
         return
 
-    logger.debug("Have %d check runs for suite", len(check_runs)) 
+    logger.debug("Have %d check runs for suite", len(check_runs))
 
     job_url = check_runs[0]["external_id"]
     if job_url == "":
@@ -181,7 +183,9 @@ async def handle_check_suite(
     pipeline_id = job_data["pipeline"]["id"]
     project_id = job_data["pipeline"]["project_id"]
 
-    pipeline_vars = await gitlab.get_pipeline_variables(project_id, pipeline_id, session)
+    pipeline_vars = await gitlab.get_pipeline_variables(
+        project_id, pipeline_id, session
+    )
 
     bridge_payload = pipeline_vars["BRIDGE_PAYLOAD"]
     signature = pipeline_vars["TRIGGER_SIGNATURE"]
@@ -199,7 +203,9 @@ async def handle_check_suite(
 
     clone_url = bridge_payload["clone_url"]
     head_sha = bridge_payload["head_sha"]
-    head_ref = bridge_payload.get("head_ref", "") # defaulted in case payloads without base_ref are still in flight
+    head_ref = bridge_payload.get(
+        "head_ref", ""
+    )  # defaulted in case payloads without base_ref are still in flight
     logger.debug("Clone url of previous job was: %s", clone_url)
     logger.debug("Head sha previous job was: %s", head_sha)
 
@@ -212,6 +218,7 @@ async def handle_check_suite(
         installation_id=data["installation"]["id"],
         head_ref=head_ref,
     )
+
 
 async def handle_push(
     gh: GitHubAPI, session: aiohttp.ClientSession, data: Mapping[str, Any]
@@ -253,20 +260,20 @@ async def handle_push(
     )
 
     #  payload = {
-        #  "name": "CI Bridge",
-        #  "status": "queued",
-        #  "head_branch": "",
-        #  "head_sha": head_sha,
-        #  "output": {
-            #  "title": f"Queued on GitLab CI",
-            #  "summary": "",
-        #  },
+    #  "name": "CI Bridge",
+    #  "status": "queued",
+    #  "head_branch": "",
+    #  "head_sha": head_sha,
+    #  "output": {
+    #  "title": f"Queued on GitLab CI",
+    #  "summary": "",
+    #  },
     #  }
 
     #  logger.debug(
-        #  "Posting check run status for sha %s to GitHub: %s",
-        #  head_sha,
-        #  f"{repo_url}/check-runs",
+    #  "Posting check run status for sha %s to GitHub: %s",
+    #  head_sha,
+    #  f"{repo_url}/check-runs",
     #  )
 
     #  res = await gh.post(f"{repo_url}/check-runs", data=payload)
@@ -303,7 +310,6 @@ async def handle_rerequest(
             "Repository %s is among installed repositories",
             data["repository"]["full_name"],
         )
-
 
     async with session.post(
         f"{job_url}/retry",
@@ -374,12 +380,18 @@ async def handle_synchronize(
         repo_url=repo_url,
         clone_url=pr["head"]["repo"]["clone_url"],
         installation_id=data["installation"]["id"],
-        head_ref=pr["head"]["ref"]
+        head_ref=pr["head"]["ref"],
     )
 
 
 async def trigger_pipeline(
-    gh, session, head_sha: str, repo_url: str, installation_id: int, clone_url: str, head_ref: str
+    gh,
+    session,
+    head_sha: str,
+    repo_url: str,
+    installation_id: int,
+    clone_url: str,
+    head_ref: str,
 ):
     logger.debug(
         "Getting url for CI config from %s",
@@ -433,7 +445,6 @@ async def handle_pipeline_status(
 
     logger.debug("Job %d is reported as '%s'", pipeline["id"], status)
 
-
     status_map = {
         "created",
         "waiting_for_resource",
@@ -469,13 +480,21 @@ async def handle_pipeline_status(
     if status == "success":
         conclusion = "success"
     elif status == "failed":
-        conclusion = "failure"
+        if job["allow_failure"]:
+            conclusion = "neutral"
+        else:
+            conclusion = "failure"
     elif status == "canceled":
         conclusion = "cancelled"
     else:
         conclusion = "neutral"
 
-    logger.debug("Status to conclusion: %s => %s", status, conclusion)
+    logger.debug(
+        "Status to conclusion: %s => %s (allow_failure: %s)",
+        status,
+        conclusion,
+        job["allow_failure"],
+    )
 
     started_at = job["started_at"]
     completed_at = job["finished_at"]
