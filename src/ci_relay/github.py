@@ -284,7 +284,7 @@ async def handle_rerequest(
 ):
     job_url = data["check_run"]["external_id"]
     if not job_url.startswith(config.GITLAB_API_URL):
-        raise ValueError("Incompatible external id / job url")
+        raise ValueError(f"Incompatible external id / job url: {job_url}")
     logger.debug("Pipeline in question is %s", job_url)
 
     sender = data["sender"]["login"]
