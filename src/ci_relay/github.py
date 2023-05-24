@@ -431,7 +431,7 @@ async def trigger_pipeline(
     ) as resp:
         # data = await resp.json()
         if resp.status == 422:
-            logger.debug("Pipeline was not created: likely yaml error")
+            logger.debug("Pipeline was not created: likely yaml error: %s", await resp.text())
             await add_failure_status(gh, head_sha=head_sha, repo_url=repo_url)
         else:
             resp.raise_for_status()
