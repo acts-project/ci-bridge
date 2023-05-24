@@ -99,7 +99,7 @@ async def add_rejection_status(gh: GitHubAPI, head_sha, repo_url):
     await gh.post(f"{repo_url}/check-runs", data=payload)
 
 
-async def add_failure_status(gh: GitHubAPI, head_sha, repo_url):
+async def add_failure_status(gh: GitHubAPI, head_sha, repo_url, message):
     payload = {
         "name": "CI Bridge",
         "status": "completed",
@@ -108,7 +108,7 @@ async def add_failure_status(gh: GitHubAPI, head_sha, repo_url):
         "head_sha": head_sha,
         "output": {
             "title": f"Pipeline could not be created",
-            "summary": "This is likely a YAML error.",
+            "summary": message,
         },
     }
 
@@ -431,8 +431,14 @@ async def trigger_pipeline(
     ) as resp:
         # data = await resp.json()
         if resp.status == 422:
-            logger.debug("Pipeline was not created: likely yaml error: %s", await resp.text())
-            await add_failure_status(gh, head_sha=head_sha, repo_url=repo_url)
+            info = await resp.json()
+            message = "Unknown error"
+            try:
+                message = info["message"]["base"]
+            except KeyError: 
+                pass
+            logger.debug("Pipeline was not created: %s", message)
+            await add_failure_status(gh, head_sha=head_sha, repo_url=repo_url, message=message)
         else:
             resp.raise_for_status()
             logger.debug("Triggered pipeline on gitlab")
