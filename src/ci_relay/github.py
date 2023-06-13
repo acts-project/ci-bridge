@@ -15,6 +15,7 @@ from sanic import Sanic
 from gidgethub.abc import GitHubAPI
 from gidgethub.sansio import Event
 from gidgethub import BadRequest
+from gidgetlab.abc import GitLabAPI
 import aiohttp
 
 from ci_relay import config, gitlab
@@ -24,7 +25,7 @@ def create_router():
     router = Router()
 
     @router.register("pull_request")
-    async def on_pr(event: Event, gh: GitHubAPI, app: Sanic):
+    async def on_pr(event: Event, gh: GitHubAPI, app: Sanic, gl: GitLabAPI):
 
         pr = event.data["pull_request"]
         logger.debug("Received pull_request event on PR #%d", pr["number"])
@@ -38,28 +39,28 @@ def create_router():
         if action not in ("synchronize", "opened", "reopened"):
             return
 
-        return await handle_synchronize(gh, app.ctx.aiohttp_session, event.data)
+        return await handle_synchronize(gh, app.ctx.aiohttp_session, event.data, gl=gl)
 
     @router.register("check_run")
-    async def on_check_run(event: Event, gh: GitHubAPI, app: Sanic):
+    async def on_check_run(event: Event, gh: GitHubAPI, app: Sanic, gl: GitLabAPI):
         if event.data["action"] != "rerequested":
             return
         logger.debug("Received request for check rerun")
         await handle_rerequest(gh, app.ctx.aiohttp_session, event.data)
 
     @router.register("check_suite")
-    async def on_check_suite(event: Event, gh: GitHubAPI, app: Sanic):
+    async def on_check_suite(event: Event, gh: GitHubAPI, app: Sanic, gl: GitLabAPI):
         if event.data["action"] not in (
             #  "requested",
             "rerequested",
         ):
             return
-        await handle_check_suite(gh, app.ctx.aiohttp_session, event.data)
+        await handle_check_suite(gh, app.ctx.aiohttp_session, event.data, gl=gl)
 
     @router.register("push")
-    async def on_push(event: Event, gh: GitHubAPI, app: Sanic):
+    async def on_push(event: Event, gh: GitHubAPI, app: Sanic, gl: GitLabAPI):
         logger.debug("Received push event")
-        await handle_push(gh, app.ctx.aiohttp_session, event.data)
+        await handle_push(gh, app.ctx.aiohttp_session, event.data, gl=gl)
 
     return router
 
@@ -96,7 +97,8 @@ async def add_rejection_status(gh: GitHubAPI, head_sha, repo_url):
         head_sha,
         f"{repo_url}/check-runs",
     )
-    await gh.post(f"{repo_url}/check-runs", data=payload)
+    if not config.STERILE:
+        await gh.post(f"{repo_url}/check-runs", data=payload)
 
 
 async def add_failure_status(gh: GitHubAPI, head_sha, repo_url, message):
@@ -117,11 +119,12 @@ async def add_failure_status(gh: GitHubAPI, head_sha, repo_url, message):
         head_sha,
         f"{repo_url}/check-runs",
     )
-    await gh.post(f"{repo_url}/check-runs", data=payload)
+    if not config.STERILE:
+        await gh.post(f"{repo_url}/check-runs", data=payload)
 
 
 async def handle_check_suite(
-    gh: GitHubAPI, session: aiohttp.ClientSession, data: Mapping[str, Any]
+    gh: GitHubAPI, session: aiohttp.ClientSession, data: Mapping[str, Any], gl: GitLabAPI
 ):
     sender = data["sender"]["login"]
     org = data["organization"]["login"]
@@ -209,6 +212,8 @@ async def handle_check_suite(
     logger.debug("Clone url of previous job was: %s", clone_url)
     logger.debug("Head sha previous job was: %s", head_sha)
 
+    await cancel_pipelines_if_redundant(gl=gl, head_ref=head_ref, clone_url=clone_url)
+
     await trigger_pipeline(
         gh,
         repo_url=repo_url,
@@ -221,7 +226,7 @@ async def handle_check_suite(
 
 
 async def handle_push(
-    gh: GitHubAPI, session: aiohttp.ClientSession, data: Mapping[str, Any]
+    gh: GitHubAPI, session: aiohttp.ClientSession, data: Mapping[str, Any], gl: GitLabAPI
 ):
     sender = data["sender"]["login"]
     org = data["organization"]["login"]
@@ -248,6 +253,8 @@ async def handle_push(
             "Repository %s is among installed repositories",
             data["repository"]["full_name"],
         )
+
+    await cancel_pipelines_if_redundant(gl=gl, head_ref=data["ref"], clone_url=data["repository"]["clone_url"])
 
     await trigger_pipeline(
         gh,
@@ -311,12 +318,13 @@ async def handle_rerequest(
             data["repository"]["full_name"],
         )
 
-    async with session.post(
-        f"{job_url}/retry",
-        headers={"private-token": config.GITLAB_ACCESS_TOKEN},
-    ) as resp:
-        resp.raise_for_status()
-        logger.debug("Job retry has been posted")
+    if not config.STERILE:
+        async with session.post(
+            f"{job_url}/retry",
+            headers={"private-token": config.GITLAB_ACCESS_TOKEN},
+        ) as resp:
+            resp.raise_for_status()
+            logger.debug("Job retry has been posted")
 
 
 async def get_author_in_team(gh: GitHubAPI, author: str, org: str) -> bool:
@@ -344,9 +352,20 @@ async def get_author_in_team(gh: GitHubAPI, author: str, org: str) -> bool:
 
     return False
 
+async def cancel_pipelines_if_redundant(gl: GitLabAPI, head_ref: str, clone_url: str):
+    logger.debug("Checking for redundant pipelines")
+    for scope in ["running", "pending"]:
+        async for pipeline in gl.getiter(f"/projects/{config.GITLAB_PROJECT_ID}/pipelines", {"scope": scope}):
+            variables = {}
+            for item in await gl.getitem(f"/projects/{config.GITLAB_PROJECT_ID}/pipelines/{pipeline['id']}/variables"):
+                variables[item["key"]] = item["value"]
+
+            if variables["HEAD_REF"] == head_ref and variables["CLONE_URL"] == clone_url:
+                logger.debug("Cancel pipeline %d for %s on %s", pipeline["id"], head_ref, clone_url)
+                await gl.post(f"/projects/{config.GITLAB_PROJECT_ID}/pipelines/{pipeline['id']}/cancel", data=None)
 
 async def handle_synchronize(
-    gh: GitHubAPI, session: aiohttp.ClientSession, data: Mapping[str, Any]
+    gh: GitHubAPI, session: aiohttp.ClientSession, data: Mapping[str, Any], gl: GitLabAPI
 ):
     pr = data["pull_request"]
     author = pr["user"]["login"]
@@ -372,6 +391,8 @@ async def handle_synchronize(
             return
 
         logger.debug("%s is in team", label)
+
+    await cancel_pipelines_if_redundant(gl=gl, head_ref=pr["head"]["ref"], clone_url=pr["head"]["repo"]["clone_url"])
 
     await trigger_pipeline(
         gh,
@@ -416,32 +437,52 @@ async def trigger_pipeline(
         config.TRIGGER_SECRET, payload.encode(), digestmod="sha512"
     ).hexdigest()
 
-    async with session.post(
-        config.GITLAB_TRIGGER_URL,
-        data={
-            "token": config.GITLAB_PIPELINE_TRIGGER_TOKEN,
-            "ref": "main",
-            "variables[BRIDGE_PAYLOAD]": payload,
-            "variables[TRIGGER_SIGNATURE]": signature,
-            "variables[CONFIG_URL]": data["config_url"],
-            "variables[CLONE_URL]": clone_url,
-            "variables[HEAD_SHA]": head_sha,
-            "variables[HEAD_REF]": head_ref,
-        },
-    ) as resp:
-        # data = await resp.json()
-        if resp.status == 422:
-            info = await resp.json()
-            message = "Unknown error"
-            try:
-                message = info["message"]["base"]
-            except KeyError: 
-                pass
-            logger.debug("Pipeline was not created: %s", message)
-            await add_failure_status(gh, head_sha=head_sha, repo_url=repo_url, message=message)
-        else:
-            resp.raise_for_status()
-            logger.debug("Triggered pipeline on gitlab")
+    logger.debug("Triggering pipeline on gitlab")
+    if not config.STERILE:
+        async with session.post(
+            config.GITLAB_TRIGGER_URL,
+            data={
+                "token": config.GITLAB_PIPELINE_TRIGGER_TOKEN,
+                "ref": "main",
+                "variables[BRIDGE_PAYLOAD]": payload,
+                "variables[TRIGGER_SIGNATURE]": signature,
+                "variables[CONFIG_URL]": data["config_url"],
+                "variables[CLONE_URL]": clone_url,
+                "variables[HEAD_SHA]": head_sha,
+                "variables[HEAD_REF]": head_ref,
+            },
+        ) as resp:
+            # data = await resp.json()
+            if resp.status == 422:
+                info = await resp.json()
+                message = "Unknown error"
+                try:
+                    message = info["message"]["base"]
+                except KeyError: 
+                    pass
+                logger.debug("Pipeline was not created: %s", message)
+                await add_failure_status(gh, head_sha=head_sha, repo_url=repo_url, message=message)
+            else:
+                resp.raise_for_status()
+                logger.debug("Triggered pipeline on gitlab")
+
+def gitlab_to_github_status(gitlab_status: str) -> str:
+    if gitlab_status in (
+        "created",
+        "waiting_for_resource",
+        "preparing",
+        "pending",
+        "manual",
+        "scheduled",
+    ):
+        check_status = "queued"
+    elif gitlab_status in ("running",):
+        check_status = "in_progress"
+    elif gitlab_status in ("success", "failed", "canceled", "skipped"):
+        check_status = "completed"
+    else:
+        raise ValueError(f"Unknown status {gitlab_status}")
+    return check_status
 
 
 async def handle_pipeline_status(
@@ -451,35 +492,7 @@ async def handle_pipeline_status(
 
     logger.debug("Job %d is reported as '%s'", pipeline["id"], status)
 
-    status_map = {
-        "created",
-        "waiting_for_resource",
-        "preparing",
-        "pending",
-        "running",
-        "success",
-        "failed",
-        "canceled",
-        "skipped",
-        "manual",
-        "scheduled",
-    }
-
-    if status in (
-        "created",
-        "waiting_for_resource",
-        "preparing",
-        "pending",
-        "manual",
-        "scheduled",
-    ):
-        check_status = "queued"
-    elif status in ("running",):
-        check_status = "in_progress"
-    elif status in ("success", "failed", "canceled", "skipped"):
-        check_status = "completed"
-    else:
-        raise ValueError(f"Unknown status {status}")
+    check_status = gitlab_to_github_status(status)
 
     logger.debug("Status: %s => %s", status, check_status)
 
@@ -587,4 +600,5 @@ async def handle_pipeline_status(
         f"{repo_url}/check-runs",
     )
 
-    await gh.post(f"{repo_url}/check-runs", data=payload)
+    if not config.STERILE:
+        await gh.post(f"{repo_url}/check-runs", data=payload)
