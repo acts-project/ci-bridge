@@ -362,7 +362,8 @@ async def cancel_pipelines_if_redundant(gl: GitLabAPI, head_ref: str, clone_url:
 
             if variables["HEAD_REF"] == head_ref and variables["CLONE_URL"] == clone_url:
                 logger.debug("Cancel pipeline %d for %s on %s", pipeline["id"], head_ref, clone_url)
-                await gl.post(f"/projects/{config.GITLAB_PROJECT_ID}/pipelines/{pipeline['id']}/cancel", data=None)
+                if not config.STERILE:
+                    await gl.post(f"/projects/{config.GITLAB_PROJECT_ID}/pipelines/{pipeline['id']}/cancel", data=None)
 
 async def handle_synchronize(
     gh: GitHubAPI, session: aiohttp.ClientSession, data: Mapping[str, Any], gl: GitLabAPI
