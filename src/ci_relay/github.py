@@ -36,7 +36,7 @@ def create_router():
         repo_url = event.data["repository"]["url"]
         logger.debug("Repo url is %s", repo_url)
 
-        if action not in ("synchronize", "opened", "reopened"):
+        if action not in ("synchronize", "opened", "reopened", "ready_for_review"):
             return
 
         return await handle_synchronize(gh, app.ctx.aiohttp_session, event.data, gl=gl)
