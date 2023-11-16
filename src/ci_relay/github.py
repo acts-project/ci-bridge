@@ -369,6 +369,11 @@ async def handle_synchronize(
     gh: GitHubAPI, session: aiohttp.ClientSession, data: Mapping[str, Any], gl: GitLabAPI
 ):
     pr = data["pull_request"]
+
+    if pr["draft"]:
+        logger.debug("PR is draft, stop processing")
+        return
+
     author = pr["user"]["login"]
     source_repo_login = pr["head"]["user"]["login"]
     logger.debug("PR author is %s, source repo user is %s", author, source_repo_login)
