@@ -15,4 +15,4 @@ ENV PATH=/home/$USER/.local/bin:$PATH
 RUN uv sync --frozen
 
 USER $USER
-CMD uv run uvicorn ci_relay.web:create_app --factory --port 5000 --host 0.0.0.0
+CMD uv run --frozen uvicorn ci_relay.web:create_app --factory --port 5000 --host 0.0.0.0
