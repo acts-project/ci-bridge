@@ -10,6 +10,7 @@ from sanic.log import logger
 import cachetools
 import json
 import asyncio
+from aiolimiter import AsyncLimiter
 
 from ci_relay import config, gitlab
 from ci_relay.github import create_router, get_installed_repos, handle_pipeline_status
@@ -43,6 +44,8 @@ def create_app():
     app.ctx.cache = cachetools.LRUCache(maxsize=500)
     app.ctx.github_router = create_router()
 
+    limiter = AsyncLimiter(10)
+
     @app.listener("before_server_start")
     async def init(app, loop):
         logger.debug("Creating aiohttp session")
@@ -60,12 +63,14 @@ def create_app():
 
     @app.route("/health")
     async def health(request):
+        if not limiter.has_capacity():
+            return response.text("Rate limited", status=429)
+        await limiter.acquire()
+
         gh = gh_aiohttp.GitHubAPI(app.ctx.aiohttp_session, __name__)
 
         github_ok = False
         gitlab_ok = False
-
-        # access_token_url = f"/app/installations/{installation_id}/access_tokens"
 
         logger.info("Checking health")
         try:
