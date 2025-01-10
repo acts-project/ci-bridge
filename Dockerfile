@@ -12,7 +12,7 @@ COPY . /app
 
 ENV PATH=/home/$USER/.local/bin:$PATH
 
-RUN uv sync --frozen
+RUN uv sync --frozen --no-editable
 
 USER $USER
-CMD uv run --frozen uvicorn ci_relay.web:create_app --factory --port 5000 --host 0.0.0.0
+CMD uv run --frozen --no-editable uvicorn ci_relay.web:create_app --factory --port 5000 --host 0.0.0.0
