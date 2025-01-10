@@ -496,6 +496,7 @@ async def trigger_pipeline(
                 "variables[TRIGGER_SIGNATURE]": signature,
                 "variables[CONFIG_URL]": data["config_url"],
                 "variables[CLONE_URL]": clone_url,
+                "variables[REPO_SLUG]": repo_slug,
                 "variables[HEAD_SHA]": head_sha,
                 "variables[HEAD_REF]": head_ref,
             },
