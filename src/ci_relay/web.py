@@ -1,6 +1,6 @@
 import hmac
 
-from sanic import Sanic, response
+from sanic import Sanic, SanicException, response
 import aiohttp
 from gidgethub import sansio
 from gidgethub.apps import get_installation_access_token, get_jwt
@@ -12,7 +12,7 @@ import json
 import asyncio
 
 from ci_relay import config, gitlab
-from ci_relay.github import create_router, handle_pipeline_status
+from ci_relay.github import create_router, get_installed_repos, handle_pipeline_status
 
 
 async def client_for_installation(app, installation_id):
@@ -57,6 +57,53 @@ def create_app():
     async def index(request):
         logger.debug("status check")
         return response.text("ok")
+
+    @app.route("/health")
+    async def health(request):
+        gh = gh_aiohttp.GitHubAPI(app.ctx.aiohttp_session, __name__)
+
+        github_ok = False
+        gitlab_ok = False
+
+        # access_token_url = f"/app/installations/{installation_id}/access_tokens"
+
+        logger.info("Checking health")
+        try:
+            token = get_jwt(
+                app_id=app.config.APP_ID, private_key=app.config.PRIVATE_KEY
+            )
+            app_info = await gh.getitem("/app", jwt=token)
+            if app_info is None:
+                github_ok = False
+                logger.error("GitHub App info is None")
+            logger.info("GitHub ok")
+            github_ok = True
+        except Exception as e:
+            logger.error("GitHub App info failed: %s", e)
+            logger.exception(e)
+            github_ok = False
+
+        try:
+            gl = gidgetlab.aiohttp.GitLabAPI(
+                app.ctx.aiohttp_session,
+                requester="acts",
+                access_token=config.GITLAB_ACCESS_TOKEN,
+                url=config.GITLAB_API_URL,
+            )
+            projects = await gl.getitem(f"/projects/{config.GITLAB_PROJECT_ID}")
+            if projects is None:
+                gitlab_ok = False
+                logger.error("GitLab project info is None")
+            logger.info("GitLab ok")
+            gitlab_ok = True
+        except Exception as e:
+            logger.error("GitLab project info failed: %s", e)
+            logger.exception(e)
+            gitlab_ok = False
+
+        status = 200 if github_ok and gitlab_ok else 500
+        text = f"GitHub: {"ok" if github_ok else "not ok"}, GitLab: {"ok" if gitlab_ok else "not ok"}"
+        return response.text(text, status=status)
 
     async def handle_webhook(request):
         if request.headers.get("X-Gitlab-Event") == "Pipeline Hook":
