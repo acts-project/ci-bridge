@@ -265,8 +265,10 @@ async def handle_push(
             data["repository"]["full_name"],
         )
 
+    head_ref = data["ref"].split("/")[-1]
+
     await cancel_pipelines_if_redundant(
-        gl=gl, head_ref=data["ref"], clone_url=data["repository"]["clone_url"]
+        gl=gl, head_ref=head_ref, clone_url=data["repository"]["clone_url"]
     )
 
     await trigger_pipeline(
@@ -277,7 +279,7 @@ async def handle_push(
         session=session,
         clone_url=data["repository"]["clone_url"],
         installation_id=data["installation"]["id"],
-        head_ref=data["ref"],
+        head_ref=head_ref,
     )
 
 
