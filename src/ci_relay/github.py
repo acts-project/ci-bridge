@@ -1,12 +1,7 @@
-import asyncio
 import hmac
-import io
-from tracemalloc import start
-from typing import Any, List, Mapping
+from typing import Any, Mapping
 import json
 import gidgethub
-import dateutil.parser
-from pprint import pprint
 import textwrap
 
 from gidgethub.routing import Router
@@ -14,7 +9,6 @@ from sanic.log import logger
 from sanic import Sanic
 from gidgethub.abc import GitHubAPI
 from gidgethub.sansio import Event
-from gidgethub import BadRequest
 from gidgetlab.abc import GitLabAPI
 import aiohttp
 
@@ -25,7 +19,12 @@ def create_router():
     router = Router()
 
     @router.register("pull_request")
-    async def on_pr(event: Event, gh: GitHubAPI, app: Sanic, gl: GitLabAPI):
+    async def on_pr(
+        event: Event,
+        gh: GitHubAPI,
+        app: Sanic,
+        gl: GitLabAPI,
+    ):
 
         pr = event.data["pull_request"]
         logger.debug("Received pull_request event on PR #%d", pr["number"])
@@ -65,7 +64,7 @@ def create_router():
     return router
 
 
-async def get_installed_repos(gh: GitHubAPI) -> List[str]:
+async def get_installed_repos(gh: GitHubAPI) -> dict[str, Any]:
     return await gh.getitem("/installation/repositories")
 
 
@@ -87,7 +86,7 @@ async def add_rejection_status(gh: GitHubAPI, head_sha, repo_url):
         "head_branch": "",
         "head_sha": head_sha,
         "output": {
-            "title": f"Pipeline refused",
+            "title": "Pipeline refused",
             "summary": "No pipeline was triggered for this user",
         },
     }
@@ -109,7 +108,7 @@ async def add_failure_status(gh: GitHubAPI, head_sha, repo_url, message):
         "head_branch": "",
         "head_sha": head_sha,
         "output": {
-            "title": f"Pipeline could not be created",
+            "title": "Pipeline could not be created",
             "summary": message,
         },
     }
@@ -138,7 +137,6 @@ async def handle_check_suite(
     repo_url = data["repository"]["url"]
     repo_slug = make_repo_slug(data["repository"]["full_name"])
     head_sha = data["check_suite"]["head_sha"]
-    head_branch = data["check_suite"]["head_branch"]
 
     if data["check_suite"]["app"]["id"] != config.APP_ID:
         logger.debug("Ignoring rerequest for check suite from other app")
@@ -282,25 +280,6 @@ async def handle_push(
         head_ref=data["ref"],
     )
 
-    #  payload = {
-    #  "name": "CI Bridge",
-    #  "status": "queued",
-    #  "head_branch": "",
-    #  "head_sha": head_sha,
-    #  "output": {
-    #  "title": f"Queued on GitLab CI",
-    #  "summary": "",
-    #  },
-    #  }
-
-    #  logger.debug(
-    #  "Posting check run status for sha %s to GitHub: %s",
-    #  head_sha,
-    #  f"{repo_url}/check-runs",
-    #  )
-
-    #  res = await gh.post(f"{repo_url}/check-runs", data=payload)
-
 
 async def handle_rerequest(
     gh: GitHubAPI, session: aiohttp.ClientSession, data: Mapping[str, Any]
@@ -355,9 +334,7 @@ async def get_author_in_team(gh: GitHubAPI, author: str, org: str) -> bool:
         return True
 
     try:
-        membership = await gh.getitem(
-            f"/orgs/{org}/teams/{allow_team}/memberships/{author}"
-        )
+        await gh.getitem(f"/orgs/{org}/teams/{allow_team}/memberships/{author}")
         return True
     except gidgethub.BadRequest as e:
         if e.status_code != 404:

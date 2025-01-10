@@ -1,5 +1,4 @@
 import hmac
-import logging
 
 from sanic import Sanic, response
 import aiohttp
@@ -76,7 +75,6 @@ def create_app():
             project_id = payload["project_id"]
             pipeline_id = payload["pipeline_id"]
 
-
             pipeline, variables, project, job = await asyncio.gather(
                 gitlab.get_pipeline(
                     project_id, pipeline_id, session=app.ctx.aiohttp_session
@@ -136,11 +134,15 @@ def create_app():
 
             gh = await client_for_installation(app, installation_id)
 
-            gl =  gidgetlab.aiohttp.GitLabAPI(app.ctx.aiohttp_session, requester="acts",access_token=config.GITLAB_ACCESS_TOKEN, url=config.GITLAB_API_URL)
+            gl = gidgetlab.aiohttp.GitLabAPI(
+                app.ctx.aiohttp_session,
+                requester="acts",
+                access_token=config.GITLAB_ACCESS_TOKEN,
+                url=config.GITLAB_API_URL,
+            )
 
             logger.debug("Dispatching event %s", event.event)
             await app.ctx.github_router.dispatch(event, gh, app=app, gl=gl)
-
 
     @app.route("/webhook", methods=["POST"])
     async def github(request):
