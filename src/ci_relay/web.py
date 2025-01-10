@@ -102,7 +102,9 @@ def create_app():
             gitlab_ok = False
 
         status = 200 if github_ok and gitlab_ok else 500
-        text = f"GitHub: {"ok" if github_ok else "not ok"}, GitLab: {"ok" if gitlab_ok else "not ok"}"
+        github_str = "ok" if github_ok else "not ok"
+        gitlab_str = "ok" if gitlab_ok else "not ok"
+        text = f"GitHub: {github_str}, GitLab: {gitlab_str}"
         return response.text(text, status=status)
 
     async def handle_webhook(request):
