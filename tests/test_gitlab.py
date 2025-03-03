@@ -329,7 +329,7 @@ async def test_on_job_hook(app, monkeypatch):
     await gitlab_router.on_job_hook(event, gl, app, session)
 
     # Verify client_for_installation was called with correct installation ID
-    github.client_for_installation.assert_called_once_with(app, 12345)
+    github.client_for_installation.assert_called_once_with(app, 12345, session)
 
     # Verify handle_pipeline_status was called with correct parameters
     github.handle_pipeline_status.assert_called_once_with(

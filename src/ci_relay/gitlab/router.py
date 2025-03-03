@@ -44,7 +44,7 @@ async def on_job_hook(
 
     logger.debug("Installation id: %s", installation_id)
 
-    gh = await github.client_for_installation(app, installation_id)
+    gh = await github.client_for_installation(app, installation_id, session)
 
     await github.handle_pipeline_status(
         pipeline=pipeline,
