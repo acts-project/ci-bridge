@@ -1,8 +1,9 @@
 import hmac
 
-from sanic import Sanic, SanicException, response
+from sanic import Sanic, response
 import aiohttp
-from gidgethub import sansio
+from gidgethub.sansio import Event as GitHubEvent
+from gidgetlab.sansio import Event as GitLabEvent
 from gidgethub.apps import get_installation_access_token, get_jwt
 from gidgethub import aiohttp as gh_aiohttp
 import gidgetlab.aiohttp
@@ -12,8 +13,10 @@ import json
 import asyncio
 from aiolimiter import AsyncLimiter
 
-from ci_relay import config, gitlab
-from ci_relay.github import create_router, get_installed_repos, handle_pipeline_status
+from ci_relay import config
+from ci_relay.github.router import router as github_router
+from ci_relay.gitlab.router import router as gitlab_router
+from ci_relay.github.utils import handle_pipeline_status
 
 
 async def client_for_installation(app, installation_id):
@@ -36,13 +39,11 @@ async def client_for_installation(app, installation_id):
 
 
 def create_app():
-
     app = Sanic("ci-relay")
     app.update_config(config)
     logger.setLevel(config.OVERRIDE_LOGGING)
 
     app.ctx.cache = cachetools.LRUCache(maxsize=500)
-    app.ctx.github_router = create_router()
 
     limiter = AsyncLimiter(10)
 
@@ -112,80 +113,22 @@ def create_app():
         text = f"GitHub: {github_str}, GitLab: {gitlab_str}"
         return response.text(text, status=status)
 
-    async def handle_webhook(request):
+    async def handle_gitlab_webhook(request):
         if request.headers.get("X-Gitlab-Event") == "Pipeline Hook":
             logger.debug("Received pipeline report")
         elif request.headers.get("X-Gitlab-Event") == "Job Hook":
-            # this is a ping back!
-            logger.debug("Received job report")
-            if request.headers["X-Gitlab-Token"] != config.GITLAB_WEBHOOK_SECRET:
-                raise ValueError("Webhook has invalid token")
+            # # this is a ping back!
+            # logger.debug("Received job report")
+            # if request.headers["X-Gitlab-Token"] != config.GITLAB_WEBHOOK_SECRET:
+            #     raise ValueError("Webhook has invalid token")
 
-            payload = request.json
-
-            if payload["object_kind"] != "build":
-                raise ValueError("Object is not a build")
-
-            project_id = payload["project_id"]
-            pipeline_id = payload["pipeline_id"]
-
-            pipeline, variables, project, job = await asyncio.gather(
-                gitlab.get_pipeline(
-                    project_id, pipeline_id, session=app.ctx.aiohttp_session
-                ),
-                gitlab.get_pipeline_variables(
-                    project_id, pipeline_id, session=app.ctx.aiohttp_session
-                ),
-                gitlab.get_project(project_id, session=app.ctx.aiohttp_session),
-                gitlab.get_job(
-                    project_id, payload["build_id"], session=app.ctx.aiohttp_session
-                ),
+            event = GitLabEvent.from_http(
+                request.headers, request.body, secret=config.GITLAB_WEBHOOK_SECRET
             )
-
-            #  logger.debug("%s", pipeline)
-            #  logger.debug("%s", variables)
-
-            bridge_payload = variables["BRIDGE_PAYLOAD"]
-            signature = variables["TRIGGER_SIGNATURE"]
-
-            expected_signature = hmac.new(
-                config.TRIGGER_SECRET,
-                bridge_payload.encode(),
-                digestmod="sha512",
-            ).hexdigest()
-            if not hmac.compare_digest(expected_signature, signature):
-                logger.error("Signatures do not match")
-                return response.empty(400)
-
-            bridge_payload = json.loads(bridge_payload)
-
-            installation_id = bridge_payload["installation_id"]
-            logger.debug("Installation id: %s", installation_id)
-
-            gh = await client_for_installation(app, installation_id)
-
-            await handle_pipeline_status(
-                pipeline=pipeline,
-                job=job,
-                project=project,
-                repo_url=bridge_payload["repo_url"],
-                head_sha=bridge_payload["head_sha"],
-                gh=gh,
-                app=app,
-            )
-
-        else:
-            event = sansio.Event.from_http(
-                request.headers, request.body, secret=app.config.WEBHOOK_SECRET
-            )
-
-            if event.event == "ping":
-                return response.empty(200)
 
             assert "installation" in event.data
             installation_id = event.data["installation"]["id"]
             logger.debug("Installation id: %s", installation_id)
-
             gh = await client_for_installation(app, installation_id)
 
             gl = gidgetlab.aiohttp.GitLabAPI(
@@ -196,13 +139,46 @@ def create_app():
             )
 
             logger.debug("Dispatching event %s", event.event)
-            await app.ctx.github_router.dispatch(event, gh, app=app, gl=gl)
+            await gitlab_router.dispatch(
+                event, session=app.ctx.aiohttp_session, gh=gh, app=app, gl=gl
+            )
 
-    @app.route("/webhook", methods=["POST"])
+    async def handle_github_webhook(request):
+        event = GitHubEvent.from_http(
+            request.headers, request.body, secret=app.config.WEBHOOK_SECRET
+        )
+
+        assert "installation" in event.data
+        installation_id = event.data["installation"]["id"]
+        logger.debug("Installation id: %s", installation_id)
+
+        gh = await client_for_installation(app, installation_id)
+
+        gl = gidgetlab.aiohttp.GitLabAPI(
+            app.ctx.aiohttp_session,
+            requester="acts",
+            access_token=config.GITLAB_ACCESS_TOKEN,
+            url=config.GITLAB_API_URL,
+        )
+
+        logger.debug("Dispatching event %s", event.event)
+        await github_router.dispatch(
+            event, session=app.ctx.aiohttp_session, gh=gh, app=app, gl=gl
+        )
+
+    @app.route("/webhook/github", methods=["POST"])
     async def github(request):
         logger.debug("Webhook received")
 
-        app.add_task(handle_webhook(request))
+        app.add_task(handle_github_webhook(request))
+
+        return response.empty(200)
+
+    @app.route("/webhook/gitlab", methods=["POST"])
+    async def gitlab(request):
+        logger.debug("Webhook received")
+
+        app.add_task(handle_gitlab_webhook(request))
 
         return response.empty(200)
 

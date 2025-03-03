@@ -1,68 +1,15 @@
-import hmac
 from typing import Any, Mapping
+import hmac
 import json
-import gidgethub
 import textwrap
 
-from gidgethub.routing import Router
-from sanic.log import logger
-from sanic import Sanic
 from gidgethub.abc import GitHubAPI
-from gidgethub.sansio import Event
 from gidgetlab.abc import GitLabAPI
+import gidgethub
 import aiohttp
+from sanic.log import logger
 
 from ci_relay import config, gitlab
-
-
-def create_router():
-    router = Router()
-
-    @router.register("pull_request")
-    async def on_pr(
-        event: Event,
-        gh: GitHubAPI,
-        app: Sanic,
-        gl: GitLabAPI,
-    ):
-
-        pr = event.data["pull_request"]
-        logger.debug("Received pull_request event on PR #%d", pr["number"])
-
-        action = event.data["action"]
-        logger.debug("Action: %s", action)
-
-        repo_url = event.data["repository"]["url"]
-        logger.debug("Repo url is %s", repo_url)
-
-        if action not in ("synchronize", "opened", "reopened", "ready_for_review"):
-            return
-
-        return await handle_synchronize(gh, app.ctx.aiohttp_session, event.data, gl=gl)
-
-    @router.register("check_run")
-    async def on_check_run(event: Event, gh: GitHubAPI, app: Sanic, gl: GitLabAPI):
-        if event.data["action"] != "rerequested":
-            return
-        logger.debug("Received request for check rerun")
-        await handle_rerequest(gh, app.ctx.aiohttp_session, event.data)
-
-    @router.register("check_suite")
-    async def on_check_suite(event: Event, gh: GitHubAPI, app: Sanic, gl: GitLabAPI):
-        if event.data["action"] not in (
-            #  "requested",
-            "rerequested",
-        ):
-            return
-        await handle_check_suite(gh, app.ctx.aiohttp_session, event.data, gl=gl)
-
-    @router.register("push")
-    async def on_push(event: Event, gh: GitHubAPI, app: Sanic, gl: GitLabAPI):
-        logger.debug("Received push event")
-        await handle_push(gh, app.ctx.aiohttp_session, event.data, gl=gl)
-
-    return router
-
 
 async def get_installed_repos(gh: GitHubAPI) -> dict[str, Any]:
     return await gh.getitem("/installation/repositories")
