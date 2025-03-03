@@ -1,24 +1,11 @@
 import pytest
 from unittest.mock import MagicMock, AsyncMock, Mock
 from gidgetlab import sansio
-from sanic import Sanic
 
 import ci_relay.gitlab.router as gitlab_router
 from ci_relay.gitlab.router import router
 import ci_relay.gitlab.utils as gitlab
 import ci_relay.github.utils as github
-
-
-@pytest.fixture
-def app():
-    app = Sanic("test")
-    app.config.WEBHOOK_SECRET = "test_secret"
-    return app
-
-
-@pytest.fixture
-def session():
-    return AsyncMock()
 
 
 @pytest.mark.asyncio
@@ -28,7 +15,6 @@ async def test_gitlab_job_hook(app, monkeypatch, aiohttp_session):
         data={"object_kind": "build", "build_status": "success", "build_id": 123},
     )
 
-    gidgethub_client = AsyncMock()
     gidgetlab_client = AsyncMock()
 
     with monkeypatch.context() as m:
@@ -37,7 +23,6 @@ async def test_gitlab_job_hook(app, monkeypatch, aiohttp_session):
 
         await router.dispatch(
             event,
-            gh=gidgethub_client,
             app=app,
             gl=gidgetlab_client,
             session=aiohttp_session,
@@ -46,7 +31,7 @@ async def test_gitlab_job_hook(app, monkeypatch, aiohttp_session):
 
 
 @pytest.mark.asyncio
-async def test_trigger_pipeline_success(session, monkeypatch):
+async def test_trigger_pipeline_success(monkeypatch):
     # Mock config
     monkeypatch.setattr("ci_relay.config.STERILE", False)
     monkeypatch.setattr(
@@ -70,6 +55,8 @@ async def test_trigger_pipeline_success(session, monkeypatch):
     mock_response.status = 200
     mock_response.__aenter__.return_value = mock_response
     mock_response.__aexit__.return_value = None
+
+    session = MagicMock()
     session.post = MagicMock()
     session.post.return_value = mock_response
 
@@ -115,7 +102,7 @@ async def test_trigger_pipeline_success(session, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_trigger_pipeline_failure(session, monkeypatch):
+async def test_trigger_pipeline_failure(monkeypatch):
     # Mock config
     monkeypatch.setattr("ci_relay.config.STERILE", False)
     monkeypatch.setattr(
@@ -140,6 +127,8 @@ async def test_trigger_pipeline_failure(session, monkeypatch):
     )
     mock_response.__aenter__.return_value = mock_response
     mock_response.__aexit__.return_value = None
+
+    session = MagicMock()
     session.post = MagicMock()
     session.post.return_value = mock_response
 
@@ -175,7 +164,7 @@ async def test_trigger_pipeline_failure(session, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_trigger_pipeline_sterile_mode(session, monkeypatch):
+async def test_trigger_pipeline_sterile_mode(monkeypatch):
     # Mock config for sterile mode
     monkeypatch.setattr("ci_relay.config.STERILE", True)
     monkeypatch.setattr(
@@ -190,6 +179,8 @@ async def test_trigger_pipeline_sterile_mode(session, monkeypatch):
     mock_response.status = 200
     mock_response.__aenter__.return_value = mock_response
     mock_response.__aexit__.return_value = None
+
+    session = MagicMock()
     session.post = AsyncMock()
     session.post.return_value = mock_response
 
@@ -217,3 +208,43 @@ async def test_trigger_pipeline_sterile_mode(session, monkeypatch):
     # Verify no API calls were made in sterile mode
     gidgethub_client.getitem.assert_not_called()
     session.post.assert_not_called()
+
+
+def test_gitlab_webhook_success(app, monkeypatch):
+    # Mock config
+    monkeypatch.setattr("ci_relay.config.GITLAB_WEBHOOK_SECRET", "test_secret")
+
+    # Create test data
+    payload = {
+        # "object_kind": "build",
+        # "build_status": "success",
+        # "build_id": 123,
+        # "project_id": 456,
+        # "pipeline_id": 789,
+    }
+
+    # Create mock clients
+    gidgethub_client = AsyncMock()
+
+    # Mock the client_for_installation function
+    monkeypatch.setattr(
+        "ci_relay.web.client_for_installation", AsyncMock(return_value=gidgethub_client)
+    )
+
+    # Mock on_job_hook
+    with monkeypatch.context() as m:
+        on_job_mocked = AsyncMock()
+        m.setattr(gitlab_router, "on_job_hook", on_job_mocked)
+
+        # Create test request
+        headers = {
+            "X-Gitlab-Token": "test_secret",
+            "X-Gitlab-Event": "xJob Hook",
+        }
+
+        # Call the webhook endpoint using test client
+        app.test_client.post(
+            "/webhook/gitlab",
+            json=payload,
+            headers=headers,
+        )

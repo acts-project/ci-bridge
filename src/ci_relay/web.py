@@ -109,34 +109,21 @@ def create_app():
         return response.text(text, status=status)
 
     async def handle_gitlab_webhook(request):
-        if request.headers.get("X-Gitlab-Event") == "Pipeline Hook":
-            logger.debug("Received pipeline report")
-        elif request.headers.get("X-Gitlab-Event") == "Job Hook":
-            # # this is a ping back!
-            # logger.debug("Received job report")
-            # if request.headers["X-Gitlab-Token"] != config.GITLAB_WEBHOOK_SECRET:
-            #     raise ValueError("Webhook has invalid token")
+        event = GitLabEvent.from_http(
+            request.headers, request.body, secret=config.GITLAB_WEBHOOK_SECRET
+        )
 
-            event = GitLabEvent.from_http(
-                request.headers, request.body, secret=config.GITLAB_WEBHOOK_SECRET
-            )
+        gl = gidgetlab.aiohttp.GitLabAPI(
+            app.ctx.aiohttp_session,
+            requester="acts",
+            access_token=config.GITLAB_ACCESS_TOKEN,
+            url=config.GITLAB_API_URL,
+        )
 
-            assert "installation" in event.data
-            installation_id = event.data["installation"]["id"]
-            logger.debug("Installation id: %s", installation_id)
-            gh = await client_for_installation(app, installation_id)
-
-            gl = gidgetlab.aiohttp.GitLabAPI(
-                app.ctx.aiohttp_session,
-                requester="acts",
-                access_token=config.GITLAB_ACCESS_TOKEN,
-                url=config.GITLAB_API_URL,
-            )
-
-            logger.debug("Dispatching event %s", event.event)
-            await gitlab_router.dispatch(
-                event, session=app.ctx.aiohttp_session, gh=gh, app=app, gl=gl
-            )
+        logger.debug("Dispatching event %s", event.event)
+        await gitlab_router.dispatch(
+            event, session=app.ctx.aiohttp_session, app=app, gl=gl
+        )
 
     async def handle_github_webhook(request):
         event = GitHubEvent.from_http(
@@ -186,6 +173,6 @@ def create_app():
         elif "X-GitHub-Event" in request.headers:
             app.add_task(handle_github_webhook(request))
 
-        return response.empty(400)
+        return response.empty(200)
 
     return app
