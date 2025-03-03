@@ -163,7 +163,7 @@ def create_app():
 
     @app.route("/webhook/github", methods=["POST"])
     async def github(request):
-        logger.debug("Webhook received")
+        logger.debug("Webhook received on github endpoint")
 
         app.add_task(handle_github_webhook(request))
 
@@ -171,10 +171,21 @@ def create_app():
 
     @app.route("/webhook/gitlab", methods=["POST"])
     async def gitlab(request):
-        logger.debug("Webhook received")
+        logger.debug("Webhook received on gitlab endpoint")
 
         app.add_task(handle_gitlab_webhook(request))
 
         return response.empty(200)
+
+    @app.route("/webhook", methods=["POST"])
+    async def webhook(request):
+        logger.debug("Webhook received on compatibility endpoint")
+
+        if "X-Gitlab-Event" in request.headers:
+            return await gitlab(request)
+        elif "X-GitHub-Event" in request.headers:
+            return await github(request)
+
+        return response.empty(400)
 
     return app
