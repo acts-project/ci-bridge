@@ -112,6 +112,10 @@ async def trigger_pipeline(
     clone_url: str,
     head_ref: str,
 ):
+    if config.STERILE:
+        logger.debug("Sterile mode: skipping pipeline trigger")
+        return
+
     logger.debug(
         "Getting url for CI config from %s",
         f"{repo_url}/contents/.gitlab-ci.yml?ref={head_sha}",
@@ -135,34 +139,33 @@ async def trigger_pipeline(
     signature = Signature().create(payload)
 
     logger.debug("Triggering pipeline on gitlab")
-    if not config.STERILE:
-        async with session.post(
-            config.GITLAB_TRIGGER_URL,
-            data={
-                "token": config.GITLAB_PIPELINE_TRIGGER_TOKEN,
-                "ref": "main",
-                "variables[BRIDGE_PAYLOAD]": payload,
-                "variables[TRIGGER_SIGNATURE]": signature,
-                "variables[CONFIG_URL]": data.config_url,
-                "variables[CLONE_URL]": clone_url,
-                "variables[REPO_SLUG]": repo_slug,
-                "variables[HEAD_SHA]": head_sha,
-                "variables[HEAD_REF]": head_ref,
-            },
-        ) as resp:
-            if resp.status == 422:
-                info = await resp.json()
-                message = "Unknown error"
-                try:
-                    message = info["message"]["base"]
-                except KeyError:
-                    pass
-                logger.debug("Pipeline was not created: %s", message)
-                from ci_relay.github.utils import add_failure_status
+    async with session.post(
+        config.GITLAB_TRIGGER_URL,
+        data={
+            "token": config.GITLAB_PIPELINE_TRIGGER_TOKEN,
+            "ref": "main",
+            "variables[BRIDGE_PAYLOAD]": payload,
+            "variables[TRIGGER_SIGNATURE]": signature,
+            "variables[CONFIG_URL]": data.config_url,
+            "variables[CLONE_URL]": clone_url,
+            "variables[REPO_SLUG]": repo_slug,
+            "variables[HEAD_SHA]": head_sha,
+            "variables[HEAD_REF]": head_ref,
+        },
+    ) as resp:
+        if resp.status == 422:
+            info = await resp.json()
+            message = "Unknown error"
+            try:
+                message = info["message"]["base"]
+            except KeyError:
+                pass
+            logger.debug("Pipeline was not created: %s", message)
+            from ci_relay.github.utils import add_failure_status
 
-                await add_failure_status(
-                    gh, head_sha=head_sha, repo_url=repo_url, message=message
-                )
-            else:
-                resp.raise_for_status()
-                logger.debug("Triggered pipeline on gitlab")
+            await add_failure_status(
+                gh, head_sha=head_sha, repo_url=repo_url, message=message
+            )
+        else:
+            resp.raise_for_status()
+            logger.debug("Triggered pipeline on gitlab")
