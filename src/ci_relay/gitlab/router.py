@@ -77,4 +77,4 @@ async def _on_job_hook(
     gl: GitLabAPI,
     app: Sanic,
 ):
-    await on_job_hook(event, gl, app)
+    await on_job_hook(event, gl=gl, app=app, session=session)
