@@ -6,7 +6,7 @@ import pytest_asyncio
 from sanic_testing import TestManager
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture(scope="session")
 def app() -> Sanic:
     """Create a Sanic app for testing."""
     app = create_app()

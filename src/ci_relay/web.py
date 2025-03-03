@@ -15,6 +15,46 @@ from ci_relay.gitlab.router import router as gitlab_router
 import ci_relay.github.utils as github_utils
 
 
+async def handle_gitlab_webhook(request, app: Sanic, session: aiohttp.ClientSession):
+    event = GitLabEvent.from_http(
+        request.headers, request.body, secret=config.GITLAB_WEBHOOK_SECRET
+    )
+
+    gl = gidgetlab.aiohttp.GitLabAPI(
+        session,
+        requester="acts",
+        access_token=config.GITLAB_ACCESS_TOKEN,
+        url=config.GITLAB_API_URL,
+    )
+
+    logger.debug("Dispatching event %s", event.event)
+    await gitlab_router.dispatch(event, session=session, app=app, gl=gl)
+
+
+async def handle_github_webhook(request, app: Sanic, session: aiohttp.ClientSession):
+    event = GitHubEvent.from_http(
+        request.headers, request.body, secret=app.config.WEBHOOK_SECRET
+    )
+
+    assert "installation" in event.data
+    installation_id = event.data["installation"]["id"]
+    logger.debug("Installation id: %s", installation_id)
+
+    gh = await github_utils.client_for_installation(
+        app, installation_id, session=session
+    )
+
+    gl = gidgetlab.aiohttp.GitLabAPI(
+        session,
+        requester="acts",
+        access_token=config.GITLAB_ACCESS_TOKEN,
+        url=config.GITLAB_API_URL,
+    )
+
+    logger.debug("Dispatching event %s", event.event)
+    await github_router.dispatch(event, session=session, gh=gh, app=app, gl=gl)
+
+
 def create_app():
     app = Sanic("ci-relay")
     app.update_config(config)
@@ -90,53 +130,11 @@ def create_app():
         text = f"GitHub: {github_str}, GitLab: {gitlab_str}"
         return response.text(text, status=status)
 
-    async def handle_gitlab_webhook(request):
-        event = GitLabEvent.from_http(
-            request.headers, request.body, secret=config.GITLAB_WEBHOOK_SECRET
-        )
-
-        gl = gidgetlab.aiohttp.GitLabAPI(
-            app.ctx.aiohttp_session,
-            requester="acts",
-            access_token=config.GITLAB_ACCESS_TOKEN,
-            url=config.GITLAB_API_URL,
-        )
-
-        logger.debug("Dispatching event %s", event.event)
-        await gitlab_router.dispatch(
-            event, session=app.ctx.aiohttp_session, app=app, gl=gl
-        )
-
-    async def handle_github_webhook(request):
-        event = GitHubEvent.from_http(
-            request.headers, request.body, secret=app.config.WEBHOOK_SECRET
-        )
-
-        assert "installation" in event.data
-        installation_id = event.data["installation"]["id"]
-        logger.debug("Installation id: %s", installation_id)
-
-        gh = await github_utils.client_for_installation(
-            app, installation_id, session=app.ctx.aiohttp_session
-        )
-
-        gl = gidgetlab.aiohttp.GitLabAPI(
-            app.ctx.aiohttp_session,
-            requester="acts",
-            access_token=config.GITLAB_ACCESS_TOKEN,
-            url=config.GITLAB_API_URL,
-        )
-
-        logger.debug("Dispatching event %s", event.event)
-        await github_router.dispatch(
-            event, session=app.ctx.aiohttp_session, gh=gh, app=app, gl=gl
-        )
-
     @app.route("/webhook/github", methods=["POST"])
     async def github(request):
         logger.debug("Webhook received on github endpoint")
 
-        app.add_task(handle_github_webhook(request))
+        app.add_task(handle_github_webhook(request, app, app.ctx.aiohttp_session))
 
         return response.empty(200)
 
@@ -144,7 +142,7 @@ def create_app():
     async def gitlab(request):
         logger.debug("Webhook received on gitlab endpoint")
 
-        app.add_task(handle_gitlab_webhook(request))
+        app.add_task(handle_gitlab_webhook(request, app, app.ctx.aiohttp_session))
 
         return response.empty(200)
 
@@ -153,9 +151,9 @@ def create_app():
         logger.debug("Webhook received on compatibility endpoint")
 
         if "X-Gitlab-Event" in request.headers:
-            app.add_task(handle_gitlab_webhook(request))
+            app.add_task(handle_gitlab_webhook(request, app, app.ctx.aiohttp_session))
         elif "X-GitHub-Event" in request.headers:
-            app.add_task(handle_github_webhook(request))
+            app.add_task(handle_github_webhook(request, app, app.ctx.aiohttp_session))
 
         return response.empty(200)
 
