@@ -1,1 +1,1 @@
-"""Tests for ci-relay.""" 
+"""Tests for ci-relay."""
