@@ -10,7 +10,6 @@ from sanic.log import logger
 
 from ci_relay import config
 from ci_relay.gitlab import utils as gitlab
-from ci_relay.gitlab.models import PipelineTriggerData
 from ci_relay.github.models import (
     PullRequestEvent,
     CheckSuiteEvent,
@@ -165,7 +164,7 @@ async def handle_check_suite(
         gl=gl, head_ref=head_ref, clone_url=clone_url
     )
 
-    await trigger_pipeline(
+    await gitlab.trigger_pipeline(
         gh,
         repo_url=repo_url,
         repo_slug=repo_slug,
@@ -216,7 +215,7 @@ async def handle_push(
         gl=gl, head_ref=head_ref, clone_url=event.repository.clone_url
     )
 
-    await trigger_pipeline(
+    await gitlab.trigger_pipeline(
         gh,
         repo_url=repo_url,
         repo_slug=repo_slug,
@@ -347,7 +346,7 @@ async def handle_synchronize(
         gl=gl, head_ref=pr.head.ref, clone_url=pr.head.repo.clone_url
     )
 
-    await trigger_pipeline(
+    await gitlab.trigger_pipeline(
         gh,
         session,
         head_sha=head_sha,
@@ -357,71 +356,6 @@ async def handle_synchronize(
         installation_id=event.installation.id,
         head_ref=pr.head.ref,
     )
-
-
-async def trigger_pipeline(
-    gh,
-    session,
-    head_sha: str,
-    repo_url: str,
-    repo_slug: str,
-    installation_id: int,
-    clone_url: str,
-    head_ref: str,
-):
-    logger.debug(
-        "Getting url for CI config from %s",
-        f"{repo_url}/contents/.gitlab-ci.yml?ref={head_sha}",
-    )
-
-    ci_config_file = await gh.getitem(
-        f"{repo_url}/contents/.gitlab-ci.yml?ref={head_sha}"
-    )
-
-    data = PipelineTriggerData(
-        installation_id=installation_id,
-        repo_url=repo_url,
-        repo_slug=repo_slug,
-        head_sha=head_sha,
-        config_url=ci_config_file["download_url"],
-        clone_url=clone_url,
-        head_ref=head_ref,
-    )
-    payload = json.dumps(data.model_dump())
-
-    signature = Signature().create(payload)
-
-    logger.debug("Triggering pipeline on gitlab")
-    if not config.STERILE:
-        async with session.post(
-            config.GITLAB_TRIGGER_URL,
-            data={
-                "token": config.GITLAB_PIPELINE_TRIGGER_TOKEN,
-                "ref": "main",
-                "variables[BRIDGE_PAYLOAD]": payload,
-                "variables[TRIGGER_SIGNATURE]": signature,
-                "variables[CONFIG_URL]": data.config_url,
-                "variables[CLONE_URL]": clone_url,
-                "variables[REPO_SLUG]": repo_slug,
-                "variables[HEAD_SHA]": head_sha,
-                "variables[HEAD_REF]": head_ref,
-            },
-        ) as resp:
-            # data = await resp.json()
-            if resp.status == 422:
-                info = await resp.json()
-                message = "Unknown error"
-                try:
-                    message = info["message"]["base"]
-                except KeyError:
-                    pass
-                logger.debug("Pipeline was not created: %s", message)
-                await add_failure_status(
-                    gh, head_sha=head_sha, repo_url=repo_url, message=message
-                )
-            else:
-                resp.raise_for_status()
-                logger.debug("Triggered pipeline on gitlab")
 
 
 def gitlab_to_github_status(gitlab_status: str) -> str:
