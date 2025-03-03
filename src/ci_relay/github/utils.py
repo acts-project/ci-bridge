@@ -9,7 +9,10 @@ import gidgethub
 import aiohttp
 from sanic.log import logger
 
-from ci_relay import config, gitlab
+from ci_relay import config
+from ci_relay.gitlab import utils as gitlab
+from ci_relay.github.models import PullRequestEvent
+
 
 async def get_installed_repos(gh: GitHubAPI) -> dict[str, Any]:
     return await gh.getitem("/installation/repositories")
@@ -165,7 +168,9 @@ async def handle_check_suite(
     logger.debug("Clone url of previous job was: %s", clone_url)
     logger.debug("Head sha previous job was: %s", head_sha)
 
-    await cancel_pipelines_if_redundant(gl=gl, head_ref=head_ref, clone_url=clone_url)
+    await gitlab.cancel_pipelines_if_redundant(
+        gl=gl, head_ref=head_ref, clone_url=clone_url
+    )
 
     await trigger_pipeline(
         gh,
@@ -214,7 +219,7 @@ async def handle_push(
 
     head_ref = data["ref"].split("/")[-1]
 
-    await cancel_pipelines_if_redundant(
+    await gitlab.cancel_pipelines_if_redundant(
         gl=gl, head_ref=head_ref, clone_url=data["repository"]["clone_url"]
     )
 
@@ -272,7 +277,6 @@ async def handle_rerequest(
 
 
 async def get_author_in_team(gh: GitHubAPI, author: str, org: str) -> bool:
-
     allow_org, allow_team = config.ALLOW_TEAM.split("/", 1)
 
     if allow_org != org:
@@ -295,57 +299,28 @@ async def get_author_in_team(gh: GitHubAPI, author: str, org: str) -> bool:
     return False
 
 
-async def cancel_pipelines_if_redundant(gl: GitLabAPI, head_ref: str, clone_url: str):
-    logger.debug("Checking for redundant pipelines")
-    for scope in ["running", "pending"]:
-        async for pipeline in gl.getiter(
-            f"/projects/{config.GITLAB_PROJECT_ID}/pipelines", {"scope": scope}
-        ):
-            variables = {}
-            for item in await gl.getitem(
-                f"/projects/{config.GITLAB_PROJECT_ID}/pipelines/{pipeline['id']}/variables"
-            ):
-                variables[item["key"]] = item["value"]
-
-            if (
-                variables["HEAD_REF"] == head_ref
-                and variables["CLONE_URL"] == clone_url
-            ):
-                logger.debug(
-                    "Cancel pipeline %d for %s on %s",
-                    pipeline["id"],
-                    head_ref,
-                    clone_url,
-                )
-                if not config.STERILE:
-                    await gl.post(
-                        f"/projects/{config.GITLAB_PROJECT_ID}/pipelines/{pipeline['id']}/cancel",
-                        data=None,
-                    )
-
-
 async def handle_synchronize(
     gh: GitHubAPI,
     session: aiohttp.ClientSession,
-    data: Mapping[str, Any],
+    data: PullRequestEvent,
     gl: GitLabAPI,
 ):
-    pr = data["pull_request"]
+    pr = data.pull_request
 
-    if pr["draft"]:
+    if pr.draft:
         logger.debug("PR is draft, stop processing")
         return
 
-    author = pr["user"]["login"]
-    source_repo_login = pr["head"]["user"]["login"]
+    author = pr.user.login
+    source_repo_login = pr.head.user.login
     logger.debug("PR author is %s, source repo user is %s", author, source_repo_login)
-    org = data["organization"]["login"]
+    org = data.organization.login
     logger.debug("Org is %s", org)
     logger.debug("Allow team is: %s", config.ALLOW_TEAM)
 
-    repo_url = pr["base"]["repo"]["url"]
-    repo_slug = make_repo_slug(pr["base"]["repo"]["full_name"])
-    head_sha = pr["head"]["sha"]
+    repo_url = pr.base.repo.url
+    repo_slug = make_repo_slug(pr.base.repo.full_name)
+    head_sha = pr.head.sha
 
     for login, label in [(author, "author"), (source_repo_login, "source repo login")]:
         login_in_team = await get_author_in_team(gh, login, org)
@@ -361,8 +336,8 @@ async def handle_synchronize(
 
         logger.debug("%s is in team", label)
 
-    await cancel_pipelines_if_redundant(
-        gl=gl, head_ref=pr["head"]["ref"], clone_url=pr["head"]["repo"]["clone_url"]
+    await gitlab.cancel_pipelines_if_redundant(
+        gl=gl, head_ref=pr.head.ref, clone_url=pr.head.repo.clone_url
     )
 
     await trigger_pipeline(
@@ -371,9 +346,9 @@ async def handle_synchronize(
         head_sha=head_sha,
         repo_url=repo_url,
         repo_slug=repo_slug,
-        clone_url=pr["head"]["repo"]["clone_url"],
-        installation_id=data["installation"]["id"],
-        head_ref=pr["head"]["ref"],
+        clone_url=pr.head.repo.clone_url,
+        installation_id=data.installation.id,
+        head_ref=pr.head.ref,
     )
 
 

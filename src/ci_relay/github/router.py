@@ -12,6 +12,12 @@ from ci_relay.github.utils import (
     handle_check_suite,
     handle_push,
 )
+from ci_relay.github.models import (
+    PullRequestEvent,
+    CheckRunEvent,
+    CheckSuiteEvent,
+    PushEvent,
+)
 
 router = Router()
 
@@ -24,19 +30,17 @@ async def on_pr(
     app: Sanic,
     gl: GitLabAPI,
 ):
-    pr = event.data["pull_request"]
-    logger.debug("Received pull_request event on PR #%d", pr["number"])
+    data = PullRequestEvent(**event.data)
+    logger.debug("Received pull_request event on PR #%d", data.pull_request.number)
 
-    action = event.data["action"]
-    logger.debug("Action: %s", action)
+    logger.debug("Action: %s", data.action)
 
-    repo_url = event.data["repository"]["url"]
-    logger.debug("Repo url is %s", repo_url)
+    logger.debug("Repo url is %s", data.repository.url)
 
-    if action not in ("synchronize", "opened", "reopened", "ready_for_review"):
+    if data.action not in ("synchronize", "opened", "reopened", "ready_for_review"):
         return
 
-    return await handle_synchronize(gh, session, event.data, gl=gl)
+    return await handle_synchronize(gh, session, data, gl=gl)
 
 
 @router.register("ping")
@@ -52,10 +56,11 @@ async def on_check_run(
     app: Sanic,
     gl: GitLabAPI,
 ):
-    if event.data["action"] != "rerequested":
+    data = CheckRunEvent(**event.data)
+    if data.action != "rerequested":
         return
     logger.debug("Received request for check rerun")
-    await handle_rerequest(gh, session, event.data)
+    await handle_rerequest(gh, session, data)
 
 
 @router.register("check_suite")
@@ -66,12 +71,10 @@ async def on_check_suite(
     app: Sanic,
     gl: GitLabAPI,
 ):
-    if event.data["action"] not in (
-        #  "requested",
-        "rerequested",
-    ):
+    data = CheckSuiteEvent(**event.data)
+    if data.action not in ("rerequested",):
         return
-    await handle_check_suite(gh, session, event.data, gl=gl)
+    await handle_check_suite(gh, session, data, gl=gl)
 
 
 @router.register("push")
@@ -83,4 +86,5 @@ async def on_push(
     gl: GitLabAPI,
 ):
     logger.debug("Received push event")
-    await handle_push(gh, session, event.data, gl=gl)
+    data = PushEvent(**event.data)
+    await handle_push(gh, session, data, gl=gl)
