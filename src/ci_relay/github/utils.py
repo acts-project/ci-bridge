@@ -1,5 +1,4 @@
-from typing import Any, Mapping
-import hmac
+from typing import Any
 import json
 import textwrap
 
@@ -11,7 +10,13 @@ from sanic.log import logger
 
 from ci_relay import config
 from ci_relay.gitlab import utils as gitlab
-from ci_relay.github.models import PullRequestEvent
+from ci_relay.gitlab.models import PipelineTriggerData
+from ci_relay.github.models import (
+    PullRequestEvent,
+    CheckSuiteEvent,
+    PushEvent,
+    RerequestEvent,
+)
 from ci_relay.signature import Signature
 
 
@@ -80,16 +85,16 @@ def make_repo_slug(full_name: str) -> str:
 async def handle_check_suite(
     gh: GitHubAPI,
     session: aiohttp.ClientSession,
-    data: Mapping[str, Any],
+    event: CheckSuiteEvent,
     gl: GitLabAPI,
 ):
-    sender = data["sender"]["login"]
-    org = data["organization"]["login"]
-    repo_url = data["repository"]["url"]
-    repo_slug = make_repo_slug(data["repository"]["full_name"])
-    head_sha = data["check_suite"]["head_sha"]
+    sender = event.sender.login
+    org = event.organization.login
+    repo_url = event.repository.url
+    repo_slug = make_repo_slug(event.repository.full_name)
+    head_sha = event.check_suite.head_sha
 
-    if data["check_suite"]["app"]["id"] != config.APP_ID:
+    if event.check_suite.app.id != config.APP_ID:
         logger.debug("Ignoring rerequest for check suite from other app")
         return
 
@@ -102,20 +107,18 @@ async def handle_check_suite(
         await add_rejection_status(gh, head_sha=head_sha, repo_url=repo_url)
         return
 
-    if not await is_in_installed_repos(gh, data["repository"]["id"]):
+    if not await is_in_installed_repos(gh, event.repository.id):
         logger.debug(
             "Repository %s is not among installed repositories",
-            data["repository"]["full_name"],
+            event.repository.full_name,
         )
     else:
         logger.debug(
             "Repository %s is among installed repositories",
-            data["repository"]["full_name"],
+            event.repository.full_name,
         )
 
-    # need to determine original clone url
-
-    check_runs_resp = await gh.getitem(data["check_suite"]["check_runs_url"])
+    check_runs_resp = await gh.getitem(event.check_suite.check_runs_url)
     check_runs = check_runs_resp["check_runs"]
     if len(check_runs) == 0:
         logger.debug(
@@ -169,7 +172,7 @@ async def handle_check_suite(
         head_sha=head_sha,
         session=session,
         clone_url=clone_url,
-        installation_id=data["installation"]["id"],
+        installation_id=event.installation.id,
         head_ref=head_ref,
     )
 
@@ -177,18 +180,18 @@ async def handle_check_suite(
 async def handle_push(
     gh: GitHubAPI,
     session: aiohttp.ClientSession,
-    data: Mapping[str, Any],
+    event: PushEvent,
     gl: GitLabAPI,
 ):
-    sender = data["sender"]["login"]
-    org = data["organization"]["login"]
-    repo_url = data["repository"]["url"]
-    repo_slug = make_repo_slug(data["repository"]["full_name"])
+    sender = event.sender.login
+    org = event.organization.login
+    repo_url = event.repository.url
+    repo_slug = make_repo_slug(event.repository.full_name)
     if repo_url.startswith("https://github.com/"):
-        repo_url = f"https://api.github.com/repos/{data['repository']['full_name']}"
-    head_sha = data["after"]
+        repo_url = f"https://api.github.com/repos/{event.repository.full_name}"
+    head_sha = event.after
 
-    for user in sender, data["pusher"]["name"]:
+    for user in sender, event.pusher.name:
         user_in_team = await get_author_in_team(gh, user, org)
         logger.debug("Is user %s in team %s: %s", user, config.ALLOW_TEAM, user_in_team)
         if not user_in_team:
@@ -196,21 +199,21 @@ async def handle_push(
             await add_rejection_status(gh, head_sha=head_sha, repo_url=repo_url)
             return
 
-    if not await is_in_installed_repos(gh, data["repository"]["id"]):
+    if not await is_in_installed_repos(gh, event.repository.id):
         logger.debug(
             "Repository %s is not among installed repositories",
-            data["repository"]["full_name"],
+            event.repository.full_name,
         )
     else:
         logger.debug(
             "Repository %s is among installed repositories",
-            data["repository"]["full_name"],
+            event.repository.full_name,
         )
 
-    head_ref = data["ref"].split("/")[-1]
+    head_ref = event.ref.split("/")[-1]
 
     await gitlab.cancel_pipelines_if_redundant(
-        gl=gl, head_ref=head_ref, clone_url=data["repository"]["clone_url"]
+        gl=gl, head_ref=head_ref, clone_url=event.repository.clone_url
     )
 
     await trigger_pipeline(
@@ -219,8 +222,8 @@ async def handle_push(
         repo_slug=repo_slug,
         head_sha=head_sha,
         session=session,
-        clone_url=data["repository"]["clone_url"],
-        installation_id=data["installation"]["id"],
+        clone_url=event.repository.clone_url,
+        installation_id=event.installation.id,
         head_ref=head_ref,
     )
 
@@ -241,14 +244,14 @@ async def get_gitlab_job(
 
 
 async def handle_rerequest(
-    gh: GitHubAPI, session: aiohttp.ClientSession, data: Mapping[str, Any]
+    gh: GitHubAPI, session: aiohttp.ClientSession, event: RerequestEvent
 ):
-    job_url = data["check_run"]["external_id"]
+    job_url = event.check_run.external_id
     # This will raise an error if the job url is not valid
     await get_gitlab_job(session, job_url)
 
-    sender = data["sender"]["login"]
-    org = data["organization"]["login"]
+    sender = event.sender.login
+    org = event.organization.login
 
     author_in_team = await get_author_in_team(gh, sender, org)
 
@@ -260,15 +263,15 @@ async def handle_rerequest(
         logger.debug("Sender is not in team, stop processing")
         return
 
-    if not await is_in_installed_repos(gh, data["repository"]["id"]):
+    if not await is_in_installed_repos(gh, event.repository.id):
         logger.debug(
             "Repository %s is not among installed repositories",
-            data["repository"]["full_name"],
+            event.repository.full_name,
         )
     else:
         logger.debug(
             "Repository %s is among installed repositories",
-            data["repository"]["full_name"],
+            event.repository.full_name,
         )
 
     if not config.STERILE:
@@ -306,10 +309,10 @@ async def get_author_in_team(gh: GitHubAPI, author: str, org: str) -> bool:
 async def handle_synchronize(
     gh: GitHubAPI,
     session: aiohttp.ClientSession,
-    data: PullRequestEvent,
+    event: PullRequestEvent,
     gl: GitLabAPI,
 ):
-    pr = data.pull_request
+    pr = event.pull_request
 
     if pr.draft:
         logger.debug("PR is draft, stop processing")
@@ -318,7 +321,7 @@ async def handle_synchronize(
     author = pr.user.login
     source_repo_login = pr.head.user.login
     logger.debug("PR author is %s, source repo user is %s", author, source_repo_login)
-    org = data.organization.login
+    org = event.organization.login
     logger.debug("Org is %s", org)
     logger.debug("Allow team is: %s", config.ALLOW_TEAM)
 
@@ -351,7 +354,7 @@ async def handle_synchronize(
         repo_url=repo_url,
         repo_slug=repo_slug,
         clone_url=pr.head.repo.clone_url,
-        installation_id=data.installation.id,
+        installation_id=event.installation.id,
         head_ref=pr.head.ref,
     )
 
@@ -375,16 +378,16 @@ async def trigger_pipeline(
         f"{repo_url}/contents/.gitlab-ci.yml?ref={head_sha}"
     )
 
-    data = {
-        "installation_id": installation_id,
-        "repo_url": repo_url,
-        "repo_slug": repo_slug,
-        "head_sha": head_sha,
-        "config_url": ci_config_file["download_url"],
-        "clone_url": clone_url,
-        "head_ref": head_ref,
-    }
-    payload = json.dumps(data)
+    data = PipelineTriggerData(
+        installation_id=installation_id,
+        repo_url=repo_url,
+        repo_slug=repo_slug,
+        head_sha=head_sha,
+        config_url=ci_config_file["download_url"],
+        clone_url=clone_url,
+        head_ref=head_ref,
+    )
+    payload = json.dumps(data.model_dump())
 
     signature = Signature().create(payload)
 
@@ -397,7 +400,7 @@ async def trigger_pipeline(
                 "ref": "main",
                 "variables[BRIDGE_PAYLOAD]": payload,
                 "variables[TRIGGER_SIGNATURE]": signature,
-                "variables[CONFIG_URL]": data["config_url"],
+                "variables[CONFIG_URL]": data.config_url,
                 "variables[CLONE_URL]": clone_url,
                 "variables[REPO_SLUG]": repo_slug,
                 "variables[HEAD_SHA]": head_sha,

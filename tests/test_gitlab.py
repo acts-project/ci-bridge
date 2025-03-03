@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import MagicMock, Mock, AsyncMock
+from unittest.mock import MagicMock, AsyncMock
 from gidgetlab import sansio
 from sanic import Sanic
 

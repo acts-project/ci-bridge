@@ -1,4 +1,3 @@
-import hmac
 import json
 
 import aiohttp
@@ -11,7 +10,6 @@ from sanic.log import logger
 import asyncio
 
 import ci_relay.gitlab.utils as utils
-from ci_relay import config
 from ci_relay.signature import Signature
 
 

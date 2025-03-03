@@ -1,15 +1,30 @@
 import pytest
 from unittest.mock import MagicMock, Mock, AsyncMock
 from gidgethub import sansio
-from sanic import Sanic
-from aiohttp import web
 from contextlib import asynccontextmanager
 
 import ci_relay.github.router as github_router
 from ci_relay.github.router import router
 import ci_relay.github.utils as github
 import ci_relay.gitlab.utils as gitlab
-from ci_relay.github.models import PullRequestEvent
+from ci_relay.github.models import (
+    PullRequestEvent,
+    CheckSuiteEvent,
+    Sender,
+    Organization,
+    Repository,
+    CheckSuite,
+    CheckSuiteApp,
+    Installation,
+    PushEvent,
+    Pusher,
+    RerequestEvent,
+    CheckRun,
+    User,
+    PullRequestHead,
+    PullRequestBase,
+    PullRequest,
+)
 from ci_relay.signature import Signature
 from tests.utils import AsyncIterator
 
@@ -36,37 +51,40 @@ async def test_handle_synchronize_draft_pr(
     gidgethub_client, gidgetlab_client, session, monkeypatch
 ):
     data = PullRequestEvent(
-        pull_request={
-            "draft": True,
-            "user": {"login": "author"},
-            "head": {
-                "user": {"login": "source"},
-                "ref": "feature-branch",
-                "repo": {
-                    "url": "https://api.github.com/repos/org/repo",
-                    "full_name": "org/repo",
-                    "clone_url": "https://github.com/org/repo.git",
-                },
-                "sha": "abc123",
-            },
-            "base": {
-                "repo": {
-                    "url": "https://api.github.com/repos/org/repo",
-                    "full_name": "org/repo",
-                    "clone_url": "https://github.com/org/repo.git",
-                }
-            },
-            "number": 123,
-        },
-        organization={"login": "org"},
-        installation={"id": 123},
-        sender={"login": "sender"},
+        pull_request=PullRequest(
+            draft=True,
+            user=User(login="author"),
+            head=PullRequestHead(
+                user=User(login="source"),
+                ref="feature-branch",
+                repo=Repository(
+                    id=123,
+                    url="https://api.github.com/repos/org/repo",
+                    full_name="org/repo",
+                    clone_url="https://github.com/org/repo.git",
+                ),
+                sha="abc123",
+            ),
+            base=PullRequestBase(
+                repo=Repository(
+                    id=123,
+                    url="https://api.github.com/repos/org/repo",
+                    full_name="org/repo",
+                    clone_url="https://github.com/org/repo.git",
+                )
+            ),
+            number=123,
+        ),
+        organization=Organization(login="org"),
+        installation=Installation(id=123),
+        sender=Sender(login="sender"),
         action="synchronize",
-        repository={
-            "url": "https://api.github.com/repos/org/repo",
-            "full_name": "org/repo",
-            "clone_url": "https://github.com/org/repo.git",
-        },
+        repository=Repository(
+            id=123,
+            url="https://api.github.com/repos/org/repo",
+            full_name="org/repo",
+            clone_url="https://github.com/org/repo.git",
+        ),
     )
 
     with monkeypatch.context() as m:
@@ -87,37 +105,40 @@ async def test_handle_synchronize_author_not_in_team(
     gidgethub_client, gidgetlab_client, session, monkeypatch
 ):
     data = PullRequestEvent(
-        pull_request={
-            "draft": False,
-            "user": {"login": "author"},
-            "head": {
-                "user": {"login": "source"},
-                "ref": "feature-branch",
-                "repo": {
-                    "url": "https://api.github.com/repos/org/repo",
-                    "full_name": "org/repo",
-                    "clone_url": "https://github.com/org/repo.git",
-                },
-                "sha": "abc123",
-            },
-            "base": {
-                "repo": {
-                    "url": "https://api.github.com/repos/org/repo",
-                    "full_name": "org/repo",
-                    "clone_url": "https://github.com/org/repo.git",
-                }
-            },
-            "number": 123,
-        },
-        organization={"login": "org"},
-        installation={"id": 123},
-        sender={"login": "sender"},
+        pull_request=PullRequest(
+            draft=False,
+            user=User(login="author"),
+            head=PullRequestHead(
+                user=User(login="source"),
+                ref="feature-branch",
+                repo=Repository(
+                    id=123,
+                    url="https://api.github.com/repos/org/repo",
+                    full_name="org/repo",
+                    clone_url="https://github.com/org/repo.git",
+                ),
+                sha="abc123",
+            ),
+            base=PullRequestBase(
+                repo=Repository(
+                    id=123,
+                    url="https://api.github.com/repos/org/repo",
+                    full_name="org/repo",
+                    clone_url="https://github.com/org/repo.git",
+                )
+            ),
+            number=123,
+        ),
+        organization=Organization(login="org"),
+        installation=Installation(id=123),
+        sender=Sender(login="sender"),
         action="synchronize",
-        repository={
-            "url": "https://api.github.com/repos/org/repo",
-            "full_name": "org/repo",
-            "clone_url": "https://github.com/org/repo.git",
-        },
+        repository=Repository(
+            id=123,
+            url="https://api.github.com/repos/org/repo",
+            full_name="org/repo",
+            clone_url="https://github.com/org/repo.git",
+        ),
     )
 
     with monkeypatch.context() as m:
@@ -140,37 +161,40 @@ async def test_handle_synchronize_success(
     gidgethub_client, gidgetlab_client, session, monkeypatch
 ):
     data = PullRequestEvent(
-        pull_request={
-            "draft": False,
-            "user": {"login": "author"},
-            "head": {
-                "user": {"login": "source"},
-                "ref": "feature-branch",
-                "repo": {
-                    "url": "https://api.github.com/repos/org/repo",
-                    "full_name": "org/repo",
-                    "clone_url": "https://github.com/org/repo.git",
-                },
-                "sha": "abc123",
-            },
-            "base": {
-                "repo": {
-                    "url": "https://api.github.com/repos/org/repo",
-                    "full_name": "org/repo",
-                    "clone_url": "https://github.com/org/repo.git",
-                }
-            },
-            "number": 123,
-        },
-        organization={"login": "org"},
-        installation={"id": 123},
-        sender={"login": "sender"},
+        pull_request=PullRequest(
+            draft=False,
+            user=User(login="author"),
+            head=PullRequestHead(
+                user=User(login="source"),
+                ref="feature-branch",
+                repo=Repository(
+                    id=123,
+                    url="https://api.github.com/repos/org/repo",
+                    full_name="org/repo",
+                    clone_url="https://github.com/org/repo.git",
+                ),
+                sha="abc123",
+            ),
+            base=PullRequestBase(
+                repo=Repository(
+                    id=123,
+                    url="https://api.github.com/repos/org/repo",
+                    full_name="org/repo",
+                    clone_url="https://github.com/org/repo.git",
+                )
+            ),
+            number=123,
+        ),
+        organization=Organization(login="org"),
+        installation=Installation(id=123),
+        sender=Sender(login="sender"),
         action="synchronize",
-        repository={
-            "url": "https://api.github.com/repos/org/repo",
-            "full_name": "org/repo",
-            "clone_url": "https://github.com/org/repo.git",
-        },
+        repository=Repository(
+            id=123,
+            url="https://api.github.com/repos/org/repo",
+            full_name="org/repo",
+            clone_url="https://github.com/org/repo.git",
+        ),
     )
 
     with monkeypatch.context() as m:
@@ -213,6 +237,7 @@ async def test_github_pr_webhook_allowed_actions(
                     "user": {"login": "source"},
                     "ref": "feature-branch",
                     "repo": {
+                        "id": 123,
                         "url": "https://api.github.com/repos/org/repo",
                         "full_name": "org/repo",
                         "clone_url": "https://github.com/org/repo.git",
@@ -221,6 +246,7 @@ async def test_github_pr_webhook_allowed_actions(
                 },
                 "base": {
                     "repo": {
+                        "id": 123,
                         "url": "https://api.github.com/repos/org/repo",
                         "full_name": "org/repo",
                         "clone_url": "https://github.com/org/repo.git",
@@ -229,6 +255,7 @@ async def test_github_pr_webhook_allowed_actions(
                 "number": 123,
             },
             "repository": {
+                "id": 123,
                 "url": "https://api.github.com/repos/org/repo",
                 "full_name": "org/repo",
                 "clone_url": "https://github.com/org/repo.git",
@@ -270,6 +297,7 @@ async def test_github_pr_webhook_ignored_actions(
                     "user": {"login": "source"},
                     "ref": "feature-branch",
                     "repo": {
+                        "id": 123,
                         "url": "https://api.github.com/repos/org/repo",
                         "full_name": "org/repo",
                         "clone_url": "https://github.com/org/repo.git",
@@ -278,6 +306,7 @@ async def test_github_pr_webhook_ignored_actions(
                 },
                 "base": {
                     "repo": {
+                        "id": 123,
                         "url": "https://api.github.com/repos/org/repo",
                         "full_name": "org/repo",
                         "clone_url": "https://github.com/org/repo.git",
@@ -286,6 +315,7 @@ async def test_github_pr_webhook_ignored_actions(
                 "number": 123,
             },
             "repository": {
+                "id": 123,
                 "url": "https://api.github.com/repos/org/repo",
                 "full_name": "org/repo",
                 "clone_url": "https://github.com/org/repo.git",
@@ -377,22 +407,25 @@ async def test_handle_check_suite_success(gidgethub_client, session, monkeypatch
     monkeypatch.setattr("ci_relay.config.GITLAB_PROJECT_ID", "456")
     monkeypatch.setattr("ci_relay.config.TRIGGER_SECRET", "test_secret")
 
-    # Create test data
-    data = {
-        "sender": {"login": "test_user"},
-        "organization": {"login": "test_org"},
-        "repository": {
-            "id": 123,
-            "url": "https://api.github.com/repos/test_org/test_repo",
-            "full_name": "test_org/test_repo",
-        },
-        "check_suite": {
-            "app": {"id": 12345},  # Matching APP_ID
-            "head_sha": "abc123",
-            "check_runs_url": "https://api.github.com/repos/test_org/test_repo/check-runs",
-        },
-        "installation": {"id": 123},
-    }
+    # Create test data using the model
+    event = CheckSuiteEvent(
+        action="completed",
+        sender=Sender(login="test_user"),
+        organization=Organization(login="test_org"),
+        repository=Repository(
+            id=123,
+            url="https://api.github.com/repos/test_org/test_repo",
+            full_name="test_org/test_repo",
+            clone_url="https://github.com/test_org/test_repo.git",
+        ),
+        check_suite=CheckSuite(
+            id=123456,
+            app=CheckSuiteApp(id=12345),  # Matching APP_ID
+            head_sha="abc123",
+            check_runs_url="https://api.github.com/repos/test_org/test_repo/check-runs",
+        ),
+        installation=Installation(id=123),
+    )
 
     # Mock responses
     check_runs_response = {
@@ -437,7 +470,7 @@ async def test_handle_check_suite_success(gidgethub_client, session, monkeypatch
         gitlab, "get_pipeline_variables", AsyncMock(return_value=pipeline_vars)
     )
 
-    await github.handle_check_suite(gidgethub_client, session, data, gidgetlab_client)
+    await github.handle_check_suite(gidgethub_client, session, event, gidgetlab_client)
 
     # Verify the pipeline was triggered
     github.trigger_pipeline.assert_called_once()
@@ -458,20 +491,21 @@ async def test_handle_push_success(
     monkeypatch.setattr("ci_relay.config.APP_ID", 12345)
     monkeypatch.setattr("ci_relay.config.GITLAB_API_URL", "http://localhost")
 
-    data = {
-        "sender": {"login": "test_user"},
-        "organization": {"login": "test_org"},
-        "repository": {
-            "id": 123,
-            "url": "https://api.github.com/repos/test_org/test_repo",
-            "full_name": "test_org/test_repo",
-            "clone_url": "https://github.com/test_org/test_repo.git",
-        },
-        "pusher": {"name": "test_user"},
-        "after": "abc123",
-        "ref": "refs/heads/main",
-        "installation": {"id": 123},
-    }
+    # Create test data using the model
+    event = PushEvent(
+        sender=Sender(login="test_user"),
+        organization=Organization(login="test_org"),
+        repository=Repository(
+            id=123,
+            url="https://api.github.com/repos/test_org/test_repo",
+            full_name="test_org/test_repo",
+            clone_url="https://github.com/test_org/test_repo.git",
+        ),
+        pusher=Pusher(name="test_user"),
+        after="abc123",
+        ref="refs/heads/main",
+        installation=Installation(id=123),
+    )
 
     with monkeypatch.context() as m:
         m.setattr(github, "get_author_in_team", AsyncMock(return_value=True))
@@ -479,7 +513,7 @@ async def test_handle_push_success(
         m.setattr(gitlab, "cancel_pipelines_if_redundant", AsyncMock())
         m.setattr(github, "trigger_pipeline", AsyncMock())
 
-        await github.handle_push(gidgethub_client, session, data, gidgetlab_client)
+        await github.handle_push(gidgethub_client, session, event, gidgetlab_client)
 
         # Verify pipeline was triggered with correct parameters
         github.trigger_pipeline.assert_called_once_with(
@@ -498,20 +532,20 @@ async def test_handle_push_success(
 async def test_handle_push_user_not_in_team(
     gidgethub_client, gidgetlab_client, session, monkeypatch
 ):
-    data = {
-        "sender": {"login": "test_user"},
-        "organization": {"login": "test_org"},
-        "repository": {
-            "id": 123,
-            "url": "https://api.github.com/repos/test_org/test_repo",
-            "full_name": "test_org/test_repo",
-            "clone_url": "https://github.com/test_org/test_repo.git",
-        },
-        "pusher": {"name": "test_user"},
-        "after": "abc123",
-        "ref": "refs/heads/main",
-        "installation": {"id": 123},
-    }
+    event = PushEvent(
+        sender=Sender(login="test_user"),
+        organization=Organization(login="test_org"),
+        repository=Repository(
+            id=123,
+            url="https://api.github.com/repos/test_org/test_repo",
+            full_name="test_org/test_repo",
+            clone_url="https://github.com/test_org/test_repo.git",
+        ),
+        pusher=Pusher(name="test_user"),
+        after="abc123",
+        ref="refs/heads/main",
+        installation=Installation(id=123),
+    )
 
     with monkeypatch.context() as m:
         m.setattr(github, "get_author_in_team", AsyncMock(return_value=False))
@@ -519,7 +553,7 @@ async def test_handle_push_user_not_in_team(
         m.setattr(gitlab, "cancel_pipelines_if_redundant", AsyncMock())
         m.setattr(github, "trigger_pipeline", AsyncMock())
 
-        await github.handle_push(gidgethub_client, session, data, gidgetlab_client)
+        await github.handle_push(gidgethub_client, session, event, gidgetlab_client)
 
         # Verify rejection status was added and no pipeline was triggered
         github.add_rejection_status.assert_called_once()
@@ -533,19 +567,19 @@ async def test_handle_rerequest_success(gidgethub_client, session, monkeypatch):
     monkeypatch.setattr("ci_relay.config.GITLAB_ACCESS_TOKEN", "test_token")
     monkeypatch.setattr("ci_relay.config.STERILE", False)
 
-    data = {
-        "sender": {"login": "test_user"},
-        "organization": {"login": "test_org"},
-        "repository": {
-            "id": 123,
-            "url": "https://api.github.com/repos/test_org/test_repo",
-            "full_name": "test_org/test_repo",
-        },
-        "check_run": {
-            "external_id": "http://localhost/api/v4/projects/456/jobs/789",
-        },
-        "installation": {"id": 123},
-    }
+    # Create test data using the model
+    event = RerequestEvent(
+        sender=Sender(login="test_user"),
+        organization=Organization(login="test_org"),
+        repository=Repository(
+            id=123,
+            url="https://api.github.com/repos/test_org/test_repo",
+            full_name="test_org/test_repo",
+            clone_url="https://github.com/test_org/test_repo.git",
+        ),
+        check_run=CheckRun(external_id="http://localhost/api/v4/projects/456/jobs/789"),
+        installation=Installation(id=123),
+    )
 
     # Create a mock response for the post call
     mock_response = AsyncMock()
@@ -565,7 +599,7 @@ async def test_handle_rerequest_success(gidgethub_client, session, monkeypatch):
         m.setattr(github, "get_gitlab_job", AsyncMock(return_value={"id": 789}))
         m.setattr(session, "post", mock_post)
 
-        await github.handle_rerequest(gidgethub_client, session, data)
+        await github.handle_rerequest(gidgethub_client, session, event)
 
         # Verify job retry was posted
         mock_post.assert_called_once_with(
@@ -582,19 +616,19 @@ async def test_handle_rerequest_user_not_in_team(
     monkeypatch.setattr("ci_relay.config.GITLAB_API_URL", "http://localhost")
     monkeypatch.setattr("ci_relay.config.GITLAB_ACCESS_TOKEN", "test_token")
 
-    data = {
-        "sender": {"login": "test_user"},
-        "organization": {"login": "test_org"},
-        "repository": {
-            "id": 123,
-            "url": "https://api.github.com/repos/test_org/test_repo",
-            "full_name": "test_org/test_repo",
-        },
-        "check_run": {
-            "external_id": "http://localhost/api/v4/projects/456/jobs/789",
-        },
-        "installation": {"id": 123},
-    }
+    # Create test data using the model
+    event = RerequestEvent(
+        sender=Sender(login="test_user"),
+        organization=Organization(login="test_org"),
+        repository=Repository(
+            id=123,
+            url="https://api.github.com/repos/test_org/test_repo",
+            full_name="test_org/test_repo",
+            clone_url="https://github.com/test_org/test_repo.git",
+        ),
+        check_run=CheckRun(external_id="http://localhost/api/v4/projects/456/jobs/789"),
+        installation=Installation(id=123),
+    )
 
     with monkeypatch.context() as m:
         m.setattr(github, "get_author_in_team", AsyncMock(return_value=False))
@@ -602,7 +636,7 @@ async def test_handle_rerequest_user_not_in_team(
         m.setattr(github, "get_gitlab_job", AsyncMock(return_value={"id": 789}))
         m.setattr(session, "post", AsyncMock())
 
-        await github.handle_rerequest(gidgethub_client, session, data)
+        await github.handle_rerequest(gidgethub_client, session, event)
 
         # Verify no job retry was posted
         session.post.assert_not_called()
@@ -612,19 +646,19 @@ async def test_handle_rerequest_user_not_in_team(
 async def test_handle_rerequest_incompatible_url(
     gidgethub_client, session, monkeypatch
 ):
-    data = {
-        "sender": {"login": "test_user"},
-        "organization": {"login": "test_org"},
-        "repository": {
-            "id": 123,
-            "url": "https://api.github.com/repos/test_org/test_repo",
-            "full_name": "test_org/test_repo",
-        },
-        "check_run": {
-            "external_id": "https://incompatible-url.com/jobs/789",
-        },
-        "installation": {"id": 123},
-    }
+    # Create test data using the model
+    event = RerequestEvent(
+        sender=Sender(login="test_user"),
+        organization=Organization(login="test_org"),
+        repository=Repository(
+            id=123,
+            url="https://api.github.com/repos/test_org/test_repo",
+            full_name="test_org/test_repo",
+            clone_url="https://github.com/test_org/test_repo.git",
+        ),
+        check_run=CheckRun(external_id="https://incompatible-url.com/jobs/789"),
+        installation=Installation(id=123),
+    )
 
     with monkeypatch.context() as m:
         m.setattr(github, "get_author_in_team", AsyncMock(return_value=True))
@@ -637,7 +671,7 @@ async def test_handle_rerequest_incompatible_url(
         m.setattr(session, "post", AsyncMock())
 
         with pytest.raises(ValueError, match="Incompatible external id / job url"):
-            await github.handle_rerequest(gidgethub_client, session, data)
+            await github.handle_rerequest(gidgethub_client, session, event)
 
         # Verify no job retry was posted
         session.post.assert_not_called()

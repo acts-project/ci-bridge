@@ -1,5 +1,3 @@
-import hmac
-
 from sanic import Sanic, response
 import aiohttp
 from gidgethub.sansio import Event as GitHubEvent
@@ -9,14 +7,11 @@ from gidgethub import aiohttp as gh_aiohttp
 import gidgetlab.aiohttp
 from sanic.log import logger
 import cachetools
-import json
-import asyncio
 from aiolimiter import AsyncLimiter
 
 from ci_relay import config
 from ci_relay.github.router import router as github_router
 from ci_relay.gitlab.router import router as gitlab_router
-from ci_relay.github.utils import handle_pipeline_status
 
 
 async def client_for_installation(app, installation_id):

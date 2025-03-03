@@ -6,6 +6,7 @@ class User(BaseModel):
 
 
 class Repository(BaseModel):
+    id: int
     url: str
     full_name: str
     clone_url: str
@@ -38,24 +39,63 @@ class Installation(BaseModel):
     id: int
 
 
-class PullRequestEvent(BaseModel):
-    sender: User
-    organization: Organization
-    pull_request: PullRequest
-    installation: Installation
-    action: str
-    repository: Repository
+class Sender(BaseModel):
+    login: str
+
+
+class Pusher(BaseModel):
+    name: str
 
 
 class CheckRun(BaseModel):
     external_id: str
-    number: int
+
+
+class RerequestEvent(BaseModel):
+    sender: Sender
+    organization: Organization
+    repository: Repository
+    check_run: CheckRun
+    installation: Installation
+
+
+class PushEvent(BaseModel):
+    sender: Sender
+    organization: Organization
+    repository: Repository
+    pusher: Pusher
+    after: str
+    ref: str
+    installation: Installation
+
+
+class CheckSuiteApp(BaseModel):
+    id: int
 
 
 class CheckSuite(BaseModel):
+    id: int
+    app: CheckSuiteApp
     head_sha: str
-    app: dict
     check_runs_url: str
+
+
+class CheckSuiteEvent(BaseModel):
+    action: str
+    sender: Sender
+    organization: Organization
+    repository: Repository
+    check_suite: CheckSuite
+    installation: Installation
+
+
+class PullRequestEvent(BaseModel):
+    pull_request: PullRequest
+    organization: Organization
+    installation: Installation
+    sender: Sender
+    action: str
+    repository: Repository
 
 
 class CheckRunEvent(BaseModel):
@@ -63,22 +103,3 @@ class CheckRunEvent(BaseModel):
     check_run: CheckRun
     repository: Repository
     installation: Installation
-
-
-class CheckSuiteEvent(BaseModel):
-    action: str
-    check_suite: CheckSuite
-    repository: Repository
-    installation: Installation
-    sender: User
-    organization: Organization
-
-
-class PushEvent(BaseModel):
-    sender: User
-    organization: Organization
-    repository: Repository
-    installation: Installation
-    after: str
-    ref: str
-    pusher: User
