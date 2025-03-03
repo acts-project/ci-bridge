@@ -5,3 +5,4 @@ ci-bridge
 *.json
 *.pem
 .venv
+.DS_Store

@@ -182,9 +182,9 @@ def create_app():
         logger.debug("Webhook received on compatibility endpoint")
 
         if "X-Gitlab-Event" in request.headers:
-            return await gitlab(request)
+            app.add_task(handle_gitlab_webhook(request))
         elif "X-GitHub-Event" in request.headers:
-            return await github(request)
+            app.add_task(handle_github_webhook(request))
 
         return response.empty(400)
 

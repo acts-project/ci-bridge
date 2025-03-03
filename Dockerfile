@@ -3,7 +3,7 @@ FROM python:3.10-slim
 ENV USER=ci_relay
 RUN adduser --gecos "" --disabled-password $USER
 
-RUN pip install --no-cache-dir uv
+COPY --from=ghcr.io/astral-sh/uv:0.6 /uv /bin/uv
 
 RUN mkdir /app
 WORKDIR /app
