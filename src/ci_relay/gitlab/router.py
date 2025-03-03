@@ -13,8 +13,9 @@ import ci_relay.github.utils as github
 from ci_relay.signature import Signature
 
 
-async def on_job_hook(event: Event, gl: GitLabAPI, app: Sanic):
-    logger.debug("GOGOGOGOG")
+async def on_job_hook(
+    event: Event, gl: GitLabAPI, app: Sanic, session: aiohttp.ClientSession
+):
     if event.data["object_kind"] != "build":
         raise ValueError("Object is not a build")
 
@@ -22,14 +23,10 @@ async def on_job_hook(event: Event, gl: GitLabAPI, app: Sanic):
     pipeline_id = event.data["pipeline_id"]
 
     pipeline, variables, project, job = await asyncio.gather(
-        utils.get_pipeline(project_id, pipeline_id, session=app.ctx.aiohttp_session),
-        utils.get_pipeline_variables(
-            project_id, pipeline_id, session=app.ctx.aiohttp_session
-        ),
-        utils.get_project(project_id, session=app.ctx.aiohttp_session),
-        utils.get_job(
-            project_id, event.data["build_id"], session=app.ctx.aiohttp_session
-        ),
+        utils.get_pipeline(project_id, pipeline_id, session),
+        utils.get_pipeline_variables(project_id, pipeline_id, session),
+        utils.get_project(project_id, session),
+        utils.get_job(project_id, event.data["build_id"], session),
     )
 
     bridge_payload = variables["BRIDGE_PAYLOAD"]
@@ -41,14 +38,15 @@ async def on_job_hook(event: Event, gl: GitLabAPI, app: Sanic):
 
     bridge_payload = json.loads(bridge_payload)
 
-    assert "installation" in bridge_payload
+    print(bridge_payload)
+    assert "installation_id" in bridge_payload
     installation_id = bridge_payload["installation_id"]
 
     logger.debug("Installation id: %s", installation_id)
 
     gh = await github.client_for_installation(app, installation_id)
 
-    await utils.handle_pipeline_status(
+    await github.handle_pipeline_status(
         pipeline=pipeline,
         job=job,
         project=project,

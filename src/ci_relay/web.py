@@ -2,7 +2,7 @@ from sanic import Sanic, response
 import aiohttp
 from gidgethub.sansio import Event as GitHubEvent
 from gidgetlab.sansio import Event as GitLabEvent
-from gidgethub.apps import get_installation_access_token, get_jwt
+from gidgethub.apps import get_jwt
 from gidgethub import aiohttp as gh_aiohttp
 import gidgetlab.aiohttp
 from sanic.log import logger
@@ -12,25 +12,6 @@ from aiolimiter import AsyncLimiter
 from ci_relay import config
 from ci_relay.github.router import router as github_router
 from ci_relay.gitlab.router import router as gitlab_router
-
-
-async def client_for_installation(app, installation_id):
-    gh_pre = gh_aiohttp.GitHubAPI(app.ctx.aiohttp_session, __name__)
-    access_token_response = await get_installation_access_token(
-        gh_pre,
-        installation_id=installation_id,
-        app_id=app.config.APP_ID,
-        private_key=app.config.PRIVATE_KEY,
-    )
-
-    token = access_token_response["token"]
-
-    return gh_aiohttp.GitHubAPI(
-        app.ctx.aiohttp_session,
-        __name__,
-        oauth_token=token,
-        cache=app.ctx.cache,
-    )
 
 
 def create_app():
@@ -134,7 +115,9 @@ def create_app():
         installation_id = event.data["installation"]["id"]
         logger.debug("Installation id: %s", installation_id)
 
-        gh = await client_for_installation(app, installation_id)
+        gh = await github.client_for_installation(
+            app, installation_id, session=app.ctx.aiohttp_session
+        )
 
         gl = gidgetlab.aiohttp.GitLabAPI(
             app.ctx.aiohttp_session,

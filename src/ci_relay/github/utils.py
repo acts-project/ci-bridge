@@ -4,8 +4,10 @@ import textwrap
 
 from gidgethub.abc import GitHubAPI
 from gidgetlab.abc import GitLabAPI
+from gidgethub import aiohttp as gh_aiohttp
 import gidgethub
 import aiohttp
+from gidgethub.apps import get_installation_access_token
 from sanic.log import logger
 
 from ci_relay import config
@@ -375,6 +377,25 @@ def gitlab_to_github_status(gitlab_status: str) -> str:
     else:
         raise ValueError(f"Unknown status {gitlab_status}")
     return check_status
+
+
+async def client_for_installation(app, installation_id, session: aiohttp.ClientSession):
+    gh_pre = gh_aiohttp.GitHubAPI(session, __name__)
+    access_token_response = await get_installation_access_token(
+        gh_pre,
+        installation_id=installation_id,
+        app_id=app.config.APP_ID,
+        private_key=app.config.PRIVATE_KEY,
+    )
+
+    token = access_token_response["token"]
+
+    return gh_aiohttp.GitHubAPI(
+        session,
+        __name__,
+        oauth_token=token,
+        cache=app.ctx.cache,
+    )
 
 
 async def handle_pipeline_status(
