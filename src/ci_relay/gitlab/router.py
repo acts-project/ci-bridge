@@ -12,6 +12,7 @@ import asyncio
 
 import ci_relay.gitlab.utils as utils
 from ci_relay import config
+from ci_relay.signature import Signature
 
 
 async def on_job_hook(event: Event, gl: GitLabAPI, gh: GitHubAPI, app: Sanic):
@@ -38,12 +39,7 @@ async def on_job_hook(event: Event, gl: GitLabAPI, gh: GitHubAPI, app: Sanic):
     bridge_payload = variables["BRIDGE_PAYLOAD"]
     signature = variables["TRIGGER_SIGNATURE"]
 
-    expected_signature = hmac.new(
-        config.TRIGGER_SECRET,
-        bridge_payload.encode(),
-        digestmod="sha512",
-    ).hexdigest()
-    if not hmac.compare_digest(expected_signature, signature):
+    if not Signature().verify(bridge_payload, signature):
         logger.error("Signatures do not match")
         return
 

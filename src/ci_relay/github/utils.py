@@ -12,6 +12,7 @@ from sanic.log import logger
 from ci_relay import config
 from ci_relay.gitlab import utils as gitlab
 from ci_relay.github.models import PullRequestEvent
+from ci_relay.signature import Signature
 
 
 async def get_installed_repos(gh: GitHubAPI) -> dict[str, Any]:
@@ -131,13 +132,7 @@ async def handle_check_suite(
 
     logger.debug("Query job url %s", job_url)
 
-    async with session.get(
-        job_url,
-        headers={"private-token": config.GITLAB_ACCESS_TOKEN},
-    ) as resp:
-        resp.raise_for_status()
-
-        job_data = await resp.json()
+    job_data = await get_gitlab_job(session, job_url)
 
     pipeline_id = job_data["pipeline"]["id"]
     project_id = job_data["pipeline"]["project_id"]
@@ -149,12 +144,7 @@ async def handle_check_suite(
     bridge_payload = pipeline_vars["BRIDGE_PAYLOAD"]
     signature = pipeline_vars["TRIGGER_SIGNATURE"]
 
-    expected_signature = hmac.new(
-        config.TRIGGER_SECRET,
-        bridge_payload.encode(),
-        digestmod="sha512",
-    ).hexdigest()
-    if not hmac.compare_digest(expected_signature, signature):
+    if not Signature().verify(bridge_payload, signature):
         logger.error("Signatures do not match for pipeline behind check suite")
         raise ValueError("Signature mismatch")
 
@@ -235,13 +225,27 @@ async def handle_push(
     )
 
 
+async def get_gitlab_job(
+    session: aiohttp.ClientSession, job_url: str
+) -> dict[str, Any]:
+    if not job_url.startswith(config.GITLAB_API_URL):
+        raise ValueError(f"Incompatible external id / job url: {job_url}")
+    logger.debug("Pipeline in question is %s", job_url)
+
+    async with session.get(
+        job_url,
+        headers={"private-token": config.GITLAB_ACCESS_TOKEN},
+    ) as resp:
+        resp.raise_for_status()
+        return await resp.json()
+
+
 async def handle_rerequest(
     gh: GitHubAPI, session: aiohttp.ClientSession, data: Mapping[str, Any]
 ):
     job_url = data["check_run"]["external_id"]
-    if not job_url.startswith(config.GITLAB_API_URL):
-        raise ValueError(f"Incompatible external id / job url: {job_url}")
-    logger.debug("Pipeline in question is %s", job_url)
+    # This will raise an error if the job url is not valid
+    await get_gitlab_job(session, job_url)
 
     sender = data["sender"]["login"]
     org = data["organization"]["login"]
@@ -272,7 +276,7 @@ async def handle_rerequest(
             f"{job_url}/retry",
             headers={"private-token": config.GITLAB_ACCESS_TOKEN},
         ) as resp:
-            resp.raise_for_status()
+            await resp.raise_for_status()
             logger.debug("Job retry has been posted")
 
 
@@ -382,9 +386,7 @@ async def trigger_pipeline(
     }
     payload = json.dumps(data)
 
-    signature = hmac.new(
-        config.TRIGGER_SECRET, payload.encode(), digestmod="sha512"
-    ).hexdigest()
+    signature = Signature().create(payload)
 
     logger.debug("Triggering pipeline on gitlab")
     if not config.STERILE:

@@ -29,10 +29,8 @@ def get_job_url(project_id: int, job_id: int):
     return f"{config.GITLAB_API_URL}/projects/{project_id}/jobs/{job_id}"
 
 
-async def get_job(project_id: int, job_id: int, session: aiohttp.ClientSession):
-    async with session.get(
-        get_job_url(project_id, job_id), headers=_default_headers
-    ) as resp:
+async def get_job(url: str, session: aiohttp.ClientSession):
+    async with session.get(url, headers=_default_headers) as resp:
         resp.raise_for_status()
         return await resp.json()
 
