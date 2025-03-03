@@ -46,6 +46,15 @@ def session():
     return AsyncMock()
 
 
+# Global test repository
+test_repository = Repository(
+    id=123,
+    url="https://api.github.com/repos/test_org/test_repo",
+    full_name="test_org/test_repo",
+    clone_url="https://github.com/test_org/test_repo.git",
+)
+
+
 @pytest.mark.asyncio
 async def test_handle_synchronize_draft_pr(
     gidgethub_client, gidgetlab_client, session, monkeypatch
@@ -57,34 +66,17 @@ async def test_handle_synchronize_draft_pr(
             head=PullRequestHead(
                 user=User(login="source"),
                 ref="feature-branch",
-                repo=Repository(
-                    id=123,
-                    url="https://api.github.com/repos/org/repo",
-                    full_name="org/repo",
-                    clone_url="https://github.com/org/repo.git",
-                ),
+                repo=test_repository,
                 sha="abc123",
             ),
-            base=PullRequestBase(
-                repo=Repository(
-                    id=123,
-                    url="https://api.github.com/repos/org/repo",
-                    full_name="org/repo",
-                    clone_url="https://github.com/org/repo.git",
-                )
-            ),
+            base=PullRequestBase(repo=test_repository),
             number=123,
         ),
         organization=Organization(login="org"),
         installation=Installation(id=123),
         sender=Sender(login="sender"),
         action="synchronize",
-        repository=Repository(
-            id=123,
-            url="https://api.github.com/repos/org/repo",
-            full_name="org/repo",
-            clone_url="https://github.com/org/repo.git",
-        ),
+        repository=test_repository,
     )
 
     with monkeypatch.context() as m:
@@ -111,34 +103,17 @@ async def test_handle_synchronize_author_not_in_team(
             head=PullRequestHead(
                 user=User(login="source"),
                 ref="feature-branch",
-                repo=Repository(
-                    id=123,
-                    url="https://api.github.com/repos/org/repo",
-                    full_name="org/repo",
-                    clone_url="https://github.com/org/repo.git",
-                ),
+                repo=test_repository,
                 sha="abc123",
             ),
-            base=PullRequestBase(
-                repo=Repository(
-                    id=123,
-                    url="https://api.github.com/repos/org/repo",
-                    full_name="org/repo",
-                    clone_url="https://github.com/org/repo.git",
-                )
-            ),
+            base=PullRequestBase(repo=test_repository),
             number=123,
         ),
         organization=Organization(login="org"),
         installation=Installation(id=123),
         sender=Sender(login="sender"),
         action="synchronize",
-        repository=Repository(
-            id=123,
-            url="https://api.github.com/repos/org/repo",
-            full_name="org/repo",
-            clone_url="https://github.com/org/repo.git",
-        ),
+        repository=test_repository,
     )
 
     with monkeypatch.context() as m:
@@ -167,34 +142,17 @@ async def test_handle_synchronize_success(
             head=PullRequestHead(
                 user=User(login="source"),
                 ref="feature-branch",
-                repo=Repository(
-                    id=123,
-                    url="https://api.github.com/repos/org/repo",
-                    full_name="org/repo",
-                    clone_url="https://github.com/org/repo.git",
-                ),
+                repo=test_repository,
                 sha="abc123",
             ),
-            base=PullRequestBase(
-                repo=Repository(
-                    id=123,
-                    url="https://api.github.com/repos/org/repo",
-                    full_name="org/repo",
-                    clone_url="https://github.com/org/repo.git",
-                )
-            ),
+            base=PullRequestBase(repo=test_repository),
             number=123,
         ),
         organization=Organization(login="org"),
         installation=Installation(id=123),
         sender=Sender(login="sender"),
         action="synchronize",
-        repository=Repository(
-            id=123,
-            url="https://api.github.com/repos/org/repo",
-            full_name="org/repo",
-            clone_url="https://github.com/org/repo.git",
-        ),
+        repository=test_repository,
     )
 
     with monkeypatch.context() as m:
@@ -211,10 +169,10 @@ async def test_handle_synchronize_success(
             gidgethub_client,
             session,
             head_sha="abc123",
-            repo_url="https://api.github.com/repos/org/repo",
-            repo_slug="org_repo",
+            repo_url="https://api.github.com/repos/test_org/test_repo",
+            repo_slug="test_org_test_repo",
             installation_id=123,
-            clone_url="https://github.com/org/repo.git",
+            clone_url="https://github.com/test_org/test_repo.git",
             head_ref="feature-branch",
         )
 
@@ -224,7 +182,12 @@ async def test_handle_synchronize_success(
     "action", ["synchronize", "opened", "reopened", "ready_for_review"]
 )
 async def test_github_pr_webhook_allowed_actions(
-    gidgethub_client, gidgetlab_client, app, monkeypatch, action, aiohttp_session
+    gidgethub_client,
+    gidgetlab_client,
+    app,
+    monkeypatch,
+    action,
+    aiohttp_session,
 ):
     event = sansio.Event(
         event="pull_request",
@@ -236,30 +199,13 @@ async def test_github_pr_webhook_allowed_actions(
                 "head": {
                     "user": {"login": "source"},
                     "ref": "feature-branch",
-                    "repo": {
-                        "id": 123,
-                        "url": "https://api.github.com/repos/org/repo",
-                        "full_name": "org/repo",
-                        "clone_url": "https://github.com/org/repo.git",
-                    },
+                    "repo": test_repository.model_dump(),
                     "sha": "abc123",
                 },
-                "base": {
-                    "repo": {
-                        "id": 123,
-                        "url": "https://api.github.com/repos/org/repo",
-                        "full_name": "org/repo",
-                        "clone_url": "https://github.com/org/repo.git",
-                    }
-                },
+                "base": {"repo": test_repository.model_dump()},
                 "number": 123,
             },
-            "repository": {
-                "id": 123,
-                "url": "https://api.github.com/repos/org/repo",
-                "full_name": "org/repo",
-                "clone_url": "https://github.com/org/repo.git",
-            },
+            "repository": test_repository.model_dump(),
             "organization": {"login": "org"},
             "installation": {"id": 123},
             "sender": {"login": "sender"},
@@ -284,7 +230,12 @@ async def test_github_pr_webhook_allowed_actions(
 @pytest.mark.asyncio
 @pytest.mark.parametrize("action", ["closed", "merged", "reviewed", "labeled"])
 async def test_github_pr_webhook_ignored_actions(
-    gidgethub_client, gidgetlab_client, app, monkeypatch, action, aiohttp_session
+    gidgethub_client,
+    gidgetlab_client,
+    app,
+    monkeypatch,
+    action,
+    aiohttp_session,
 ):
     event = sansio.Event(
         event="pull_request",
@@ -296,30 +247,13 @@ async def test_github_pr_webhook_ignored_actions(
                 "head": {
                     "user": {"login": "source"},
                     "ref": "feature-branch",
-                    "repo": {
-                        "id": 123,
-                        "url": "https://api.github.com/repos/org/repo",
-                        "full_name": "org/repo",
-                        "clone_url": "https://github.com/org/repo.git",
-                    },
+                    "repo": test_repository.model_dump(),
                     "sha": "abc123",
                 },
-                "base": {
-                    "repo": {
-                        "id": 123,
-                        "url": "https://api.github.com/repos/org/repo",
-                        "full_name": "org/repo",
-                        "clone_url": "https://github.com/org/repo.git",
-                    }
-                },
+                "base": {"repo": test_repository.model_dump()},
                 "number": 123,
             },
-            "repository": {
-                "id": 123,
-                "url": "https://api.github.com/repos/org/repo",
-                "full_name": "org/repo",
-                "clone_url": "https://github.com/org/repo.git",
-            },
+            "repository": test_repository.model_dump(),
             "organization": {"login": "org"},
             "installation": {"id": 123},
             "sender": {"login": "sender"},
@@ -412,12 +346,7 @@ async def test_handle_check_suite_success(gidgethub_client, session, monkeypatch
         action="completed",
         sender=Sender(login="test_user"),
         organization=Organization(login="test_org"),
-        repository=Repository(
-            id=123,
-            url="https://api.github.com/repos/test_org/test_repo",
-            full_name="test_org/test_repo",
-            clone_url="https://github.com/test_org/test_repo.git",
-        ),
+        repository=test_repository,
         check_suite=CheckSuite(
             id=123456,
             app=CheckSuiteApp(id=12345),  # Matching APP_ID
@@ -495,12 +424,7 @@ async def test_handle_push_success(
     event = PushEvent(
         sender=Sender(login="test_user"),
         organization=Organization(login="test_org"),
-        repository=Repository(
-            id=123,
-            url="https://api.github.com/repos/test_org/test_repo",
-            full_name="test_org/test_repo",
-            clone_url="https://github.com/test_org/test_repo.git",
-        ),
+        repository=test_repository,
         pusher=Pusher(name="test_user"),
         after="abc123",
         ref="refs/heads/main",
@@ -535,12 +459,7 @@ async def test_handle_push_user_not_in_team(
     event = PushEvent(
         sender=Sender(login="test_user"),
         organization=Organization(login="test_org"),
-        repository=Repository(
-            id=123,
-            url="https://api.github.com/repos/test_org/test_repo",
-            full_name="test_org/test_repo",
-            clone_url="https://github.com/test_org/test_repo.git",
-        ),
+        repository=test_repository,
         pusher=Pusher(name="test_user"),
         after="abc123",
         ref="refs/heads/main",
@@ -571,12 +490,7 @@ async def test_handle_rerequest_success(gidgethub_client, session, monkeypatch):
     event = RerequestEvent(
         sender=Sender(login="test_user"),
         organization=Organization(login="test_org"),
-        repository=Repository(
-            id=123,
-            url="https://api.github.com/repos/test_org/test_repo",
-            full_name="test_org/test_repo",
-            clone_url="https://github.com/test_org/test_repo.git",
-        ),
+        repository=test_repository,
         check_run=CheckRun(external_id="http://localhost/api/v4/projects/456/jobs/789"),
         installation=Installation(id=123),
     )
@@ -620,12 +534,7 @@ async def test_handle_rerequest_user_not_in_team(
     event = RerequestEvent(
         sender=Sender(login="test_user"),
         organization=Organization(login="test_org"),
-        repository=Repository(
-            id=123,
-            url="https://api.github.com/repos/test_org/test_repo",
-            full_name="test_org/test_repo",
-            clone_url="https://github.com/test_org/test_repo.git",
-        ),
+        repository=test_repository,
         check_run=CheckRun(external_id="http://localhost/api/v4/projects/456/jobs/789"),
         installation=Installation(id=123),
     )
@@ -650,12 +559,7 @@ async def test_handle_rerequest_incompatible_url(
     event = RerequestEvent(
         sender=Sender(login="test_user"),
         organization=Organization(login="test_org"),
-        repository=Repository(
-            id=123,
-            url="https://api.github.com/repos/test_org/test_repo",
-            full_name="test_org/test_repo",
-            clone_url="https://github.com/test_org/test_repo.git",
-        ),
+        repository=test_repository,
         check_run=CheckRun(external_id="https://incompatible-url.com/jobs/789"),
         installation=Installation(id=123),
     )
