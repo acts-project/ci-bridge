@@ -31,6 +31,6 @@ class Config(BaseSettings):
         "NOTSET",
     ]
 
-    EXTRA_USERS: list[str]
+    EXTRA_USERS: list[str] = []
 
-    STERILE: bool
+    STERILE: bool = False
