@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import MagicMock, AsyncMock, Mock, create_autospec
+from unittest.mock import MagicMock, AsyncMock, Mock, create_autospec, ANY as MockANY
 from gidgetlab import sansio
 import json
 from sanic import Sanic
@@ -10,6 +10,7 @@ import ci_relay.gitlab.router as gitlab_router
 from ci_relay.gitlab.router import router
 import ci_relay.github.utils as github
 from ci_relay.gitlab import GitLab
+from ci_relay.signature import Signature
 
 
 @pytest.mark.asyncio
@@ -303,46 +304,61 @@ async def test_on_job_hook(app, monkeypatch, config):
     gitlab_client = GitLab(session=session, gl=gidgetlab_client, config=config)
 
     # Mock the gather results
+    get_pipeline_mock = create_autospec(gitlab_client.get_pipeline)
+    get_pipeline_mock.return_value = mock_pipeline
     monkeypatch.setattr(
         gitlab_client,
         "get_pipeline",
-        AsyncMock(return_value=mock_pipeline),
+        get_pipeline_mock,
     )
+
+    get_pipeline_variables_mock = create_autospec(gitlab_client.get_pipeline_variables)
+    get_pipeline_variables_mock.return_value = mock_variables
     monkeypatch.setattr(
         gitlab_client,
         "get_pipeline_variables",
-        AsyncMock(return_value=mock_variables),
+        get_pipeline_variables_mock,
     )
+
+    get_project_mock = create_autospec(gitlab_client.get_project)
+    get_project_mock.return_value = mock_project
     monkeypatch.setattr(
         gitlab_client,
         "get_project",
-        AsyncMock(return_value=mock_project),
+        get_project_mock,
     )
+
+    get_job_mock = create_autospec(gitlab_client.get_job)
+    get_job_mock.return_value = mock_job
     monkeypatch.setattr(
         gitlab_client,
         "get_job",
-        AsyncMock(return_value=mock_job),
+        get_job_mock,
     )
 
     # Mock handle_pipeline_status
     monkeypatch.setattr(
         github,
         "handle_pipeline_status",
-        AsyncMock(),
+        create_autospec(github.handle_pipeline_status),
     )
 
     # Mock client_for_installation
     mock_github_client = AsyncMock()
+    get_client_for_installation_mock = create_autospec(github.client_for_installation)
+    get_client_for_installation_mock.return_value = mock_github_client
     monkeypatch.setattr(
         github,
         "client_for_installation",
-        AsyncMock(return_value=mock_github_client),
+        get_client_for_installation_mock,
     )
 
     # Mock Signature verification
+    signature_verify_mock = create_autospec(Signature.verify)
+    signature_verify_mock.return_value = True
     monkeypatch.setattr(
         "ci_relay.signature.Signature.verify",
-        Mock(return_value=True),
+        signature_verify_mock,
     )
 
     session = AsyncMock()
@@ -361,5 +377,6 @@ async def test_on_job_hook(app, monkeypatch, config):
         repo_url="https://api.github.com/repos/test/org",
         head_sha="abc123",
         gh=mock_github_client,
-        app=app,
+        gitlab_client=gitlab_client,
+        config=MockANY,
     )

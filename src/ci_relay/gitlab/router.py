@@ -53,7 +53,8 @@ async def on_job_hook(
         repo_url=bridge_payload["repo_url"],
         head_sha=bridge_payload["head_sha"],
         gh=gh,
-        app=app,
+        gitlab_client=gitlab_client,
+        config=app.config,
     )
 
 
