@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import Mock, AsyncMock
+from unittest.mock import Mock, AsyncMock, create_autospec
 from gidgethub import sansio
 from contextlib import asynccontextmanager
 
@@ -210,7 +210,7 @@ async def test_github_pr_webhook_allowed_actions(app, monkeypatch, action):
     gidgetlab_client = AsyncMock()
 
     with monkeypatch.context() as m:
-        handle_sync_mocked = AsyncMock()
+        handle_sync_mocked = create_autospec(github_router.handle_synchronize)
         m.setattr(github_router, "handle_synchronize", handle_sync_mocked)
 
         await router.dispatch(
@@ -254,7 +254,7 @@ async def test_github_pr_webhook_ignored_actions(app, monkeypatch, action):
     gidgetlab_client = AsyncMock()
 
     with monkeypatch.context() as m:
-        handle_sync_mocked = AsyncMock()
+        handle_sync_mocked = create_autospec(github_router.handle_synchronize)
         m.setattr(github_router, "handle_synchronize", handle_sync_mocked)
 
         await router.dispatch(
@@ -265,6 +265,94 @@ async def test_github_pr_webhook_ignored_actions(app, monkeypatch, action):
             session=session,
         )
         handle_sync_mocked.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_github_pr_webhook_check_run_rerequested(app, monkeypatch):
+    event = sansio.Event(
+        event="check_run",
+        data={
+            "action": "rerequested",
+            "check_run": {"external_id": "123"},
+            "repository": test_repository.model_dump(),
+            "organization": {"login": "org"},
+            "installation": {"id": 123},
+            "sender": {"login": "sender"},
+        },
+        delivery_id="72d3162e-cc78-11e3-81ab-4c9367dc0958",
+    )
+
+    gidgethub_client = AsyncMock()
+    gidgetlab_client = AsyncMock()
+
+    with monkeypatch.context() as m:
+        handle_rerequest_mocked = create_autospec(github_router.handle_rerequest)
+        m.setattr(github_router, "handle_rerequest", handle_rerequest_mocked)
+
+        await router.dispatch(
+            event, app=app, gh=gidgethub_client, gl=gidgetlab_client, session=session
+        )
+
+        handle_rerequest_mocked.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_github_pr_webhook_check_run_other_action(app, monkeypatch):
+    event = sansio.Event(
+        event="check_run",
+        data={
+            "action": "other",
+            "check_run": {"external_id": "123"},
+            "repository": test_repository.model_dump(),
+            "organization": {"login": "org"},
+            "installation": {"id": 123},
+            "sender": {"login": "sender"},
+        },
+        delivery_id="72d3162e-cc78-11e3-81ab-4c9367dc0958",
+    )
+
+    gidgethub_client = AsyncMock()
+    gidgetlab_client = AsyncMock()
+
+    with monkeypatch.context() as m:
+        handle_rerequest_mocked = create_autospec(github_router.handle_rerequest)
+        m.setattr(github_router, "handle_rerequest", handle_rerequest_mocked)
+
+        await router.dispatch(
+            event, app=app, gh=gidgethub_client, gl=gidgetlab_client, session=session
+        )
+
+        handle_rerequest_mocked.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_github_on_push_success(app, monkeypatch):
+    event = sansio.Event(
+        event="push",
+        data={
+            "sender": {"login": "sender"},
+            "organization": {"login": "org"},
+            "repository": test_repository.model_dump(),
+            "pusher": {"name": "pusher"},
+            "after": "abc123",
+            "ref": "refs/heads/main",
+            "installation": {"id": 123},
+        },
+        delivery_id="72d3162e-cc78-11e3-81ab-4c9367dc0958",
+    )
+
+    gidgethub_client = AsyncMock()
+    gidgetlab_client = AsyncMock()
+
+    with monkeypatch.context() as m:
+        handle_push_mocked = create_autospec(github_router.handle_push)
+        m.setattr(github_router, "handle_push", handle_push_mocked)
+
+        await router.dispatch(
+            event, app=app, gh=gidgethub_client, gl=gidgetlab_client, session=session
+        )
+
+        handle_push_mocked.assert_called_once()
 
 
 @pytest.mark.asyncio

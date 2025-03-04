@@ -18,6 +18,7 @@ from ci_relay.github.models import (
     CheckSuiteEvent,
     PushEvent,
 )
+from ci_relay.gitlab import GitLab
 
 router = Router()
 
@@ -40,7 +41,11 @@ async def on_pr(
     if data.action not in ("synchronize", "opened", "reopened", "ready_for_review"):
         return
 
-    return await handle_synchronize(gh, session, data, gl=gl, config=app.config)
+    gitlab_client = GitLab(session=session, gl=gl, config=app.config)
+
+    return await handle_synchronize(
+        gh, session, data, gitlab_client=gitlab_client, config=app.config
+    )
 
 
 @router.register("ping")
@@ -87,4 +92,5 @@ async def on_push(
 ):
     logger.debug("Received push event")
     data = PushEvent(**event.data)
-    await handle_push(gh, session, data, gl=gl, config=app.config)
+    gitlab_client = GitLab(session=session, gl=gl, config=app.config)
+    await handle_push(gh, session, data, gitlab_client=gitlab_client, config=app.config)

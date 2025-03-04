@@ -36,11 +36,11 @@ def with_session(func):
     return wrapper
 
 
-@with_session
-async def handle_gitlab_webhook(request, *, app: Sanic, session: aiohttp.ClientSession):
-    event = GitLabEvent.from_http(
-        request.headers, request.body, secret=app.config.GITLAB_WEBHOOK_SECRET
-    )
+async def handle_gitlab_webhook(request, *, app: Sanic):
+    async with aiohttp.ClientSession(loop=app.loop) as session:
+        event = GitLabEvent.from_http(
+            request.headers, request.body, secret=app.config.GITLAB_WEBHOOK_SECRET
+        )
 
     gl = gidgetlab.aiohttp.GitLabAPI(
         session,
@@ -53,29 +53,29 @@ async def handle_gitlab_webhook(request, *, app: Sanic, session: aiohttp.ClientS
     await gitlab_router.dispatch(event, session=session, app=app, gl=gl)
 
 
-@with_session
-async def handle_github_webhook(request, *, app: Sanic, session: aiohttp.ClientSession):
-    event = GitHubEvent.from_http(
-        request.headers, request.body, secret=app.config.WEBHOOK_SECRET
-    )
+async def handle_github_webhook(request, *, app: Sanic):
+    async with aiohttp.ClientSession(loop=app.loop) as session:
+        event = GitHubEvent.from_http(
+            request.headers, request.body, secret=app.config.WEBHOOK_SECRET
+        )
 
-    assert "installation" in event.data
-    installation_id = event.data["installation"]["id"]
-    logger.debug("Installation id: %s", installation_id)
+        assert "installation" in event.data
+        installation_id = event.data["installation"]["id"]
+        logger.debug("Installation id: %s", installation_id)
 
-    gh = await github_utils.client_for_installation(
-        app=app, installation_id=installation_id, session=session
-    )
+        gh = await github_utils.client_for_installation(
+            app=app, installation_id=installation_id, session=session
+        )
 
-    gl = gidgetlab.aiohttp.GitLabAPI(
-        session,
-        requester="acts",
-        access_token=app.config.GITLAB_ACCESS_TOKEN,
-        url=app.config.GITLAB_API_URL,
-    )
+        gl = gidgetlab.aiohttp.GitLabAPI(
+            session,
+            requester="acts",
+            access_token=app.config.GITLAB_ACCESS_TOKEN,
+            url=app.config.GITLAB_API_URL,
+        )
 
-    logger.debug("Dispatching event %s", event.event)
-    await github_router.dispatch(event, session=session, gh=gh, app=app, gl=gl)
+        logger.debug("Dispatching event %s", event.event)
+        await github_router.dispatch(event, session=session, gh=gh, app=app, gl=gl)
 
 
 def create_app(*, config: Config | None = None):
