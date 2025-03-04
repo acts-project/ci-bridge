@@ -104,7 +104,7 @@ async def handle_check_suite(
         logger.debug("Ignoring rerequest for check suite from other app")
         return
 
-    author_in_team = await get_author_in_team(gh, sender, org)
+    author_in_team = await get_author_in_team(gh, sender, org, config)
     logger.debug(
         "Is sender %s in team %s: %s", sender, config.ALLOW_TEAM, author_in_team
     )
@@ -143,7 +143,7 @@ async def handle_check_suite(
 
     logger.debug("Query job url %s", job_url)
 
-    job_data = await get_gitlab_job(session, job_url)
+    job_data = await get_gitlab_job(session, job_url, config)
 
     pipeline_id = job_data["pipeline"]["id"]
     project_id = job_data["pipeline"]["project_id"]
@@ -176,7 +176,6 @@ async def handle_check_suite(
         repo_url=repo_url,
         repo_slug=repo_slug,
         head_sha=head_sha,
-        session=session,
         clone_url=clone_url,
         installation_id=event.installation.id,
         head_ref=head_ref,
@@ -342,7 +341,7 @@ async def handle_synchronize(
     head_sha = pr.head.sha
 
     for login, label in [(author, "author"), (source_repo_login, "source repo login")]:
-        login_in_team = await get_author_in_team(gh, login, org)
+        login_in_team = await get_author_in_team(gh, login, org, config)
 
         logger.debug(
             "Is %s %s in team %s: %s", label, login, config.ALLOW_TEAM, login_in_team
@@ -350,7 +349,9 @@ async def handle_synchronize(
 
         if not login_in_team:
             logger.debug("%s is not in team, stop processing", label)
-            await add_rejection_status(gh, head_sha=head_sha, repo_url=repo_url)
+            await add_rejection_status(
+                gh, head_sha=head_sha, repo_url=repo_url, config=config
+            )
             return
 
         logger.debug("%s is in team", label)
@@ -361,7 +362,6 @@ async def handle_synchronize(
 
     await gitlab_client.trigger_pipeline(
         gh,
-        session,
         head_sha=head_sha,
         repo_url=repo_url,
         repo_slug=repo_slug,

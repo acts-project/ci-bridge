@@ -70,13 +70,21 @@ async def test_handle_synchronize_draft_pr(session, monkeypatch, config):
 
     gitlab_client = GitLab(session=session, gl=gidgetlab_client, config=config)
 
-    # patch.object(gitlab_client, "cancel_pipelines_if_redundant", AsyncMock())
-    # patch.object(gitlab_client, "trigger_pipeline", AsyncMock())
-
     with monkeypatch.context() as m:
-        m.setattr(github, "get_author_in_team", AsyncMock(return_value=True))
-        m.setattr(gitlab_client, "cancel_pipelines_if_redundant", AsyncMock())
-        m.setattr(gitlab_client, "trigger_pipeline", AsyncMock())
+        get_author_in_team_mock = create_autospec(github.get_author_in_team)
+        get_author_in_team_mock.return_value = True
+
+        m.setattr(github, "get_author_in_team", get_author_in_team_mock)
+        m.setattr(
+            gitlab_client,
+            "cancel_pipelines_if_redundant",
+            create_autospec(gitlab_client.cancel_pipelines_if_redundant),
+        )
+        m.setattr(
+            gitlab_client,
+            "trigger_pipeline",
+            create_autospec(gitlab_client.trigger_pipeline),
+        )
 
         await github.handle_synchronize(
             gidgethub_client, session, data, gidgetlab_client, config
@@ -114,10 +122,25 @@ async def test_handle_synchronize_author_not_in_team(session, monkeypatch, confi
     gitlab_client = GitLab(session=session, gl=gidgetlab_client, config=config)
 
     with monkeypatch.context() as m:
-        m.setattr(github, "get_author_in_team", AsyncMock(return_value=False))
-        m.setattr(github, "add_rejection_status", AsyncMock())
-        m.setattr(gitlab_client, "cancel_pipelines_if_redundant", AsyncMock())
-        m.setattr(gitlab_client, "trigger_pipeline", AsyncMock())
+        get_author_in_team_mock = create_autospec(github.get_author_in_team)
+        get_author_in_team_mock.return_value = False
+        m.setattr(github, "get_author_in_team", get_author_in_team_mock)
+
+        m.setattr(
+            github,
+            "add_rejection_status",
+            create_autospec(github.add_rejection_status),
+        )
+        m.setattr(
+            gitlab_client,
+            "cancel_pipelines_if_redundant",
+            create_autospec(gitlab_client.cancel_pipelines_if_redundant),
+        )
+        m.setattr(
+            gitlab_client,
+            "trigger_pipeline",
+            create_autospec(gitlab_client.trigger_pipeline),
+        )
 
         await github.handle_synchronize(
             gidgethub_client, session, data, gidgetlab_client, config
@@ -156,9 +179,22 @@ async def test_handle_synchronize_success(session, monkeypatch, config):
     gitlab_client = GitLab(session=session, gl=gidgetlab_client, config=config)
 
     with monkeypatch.context() as m:
-        m.setattr(github, "get_author_in_team", AsyncMock(return_value=True))
-        m.setattr(gitlab_client, "cancel_pipelines_if_redundant", AsyncMock())
-        m.setattr(gitlab_client, "trigger_pipeline", AsyncMock())
+        get_author_in_team_mock = create_autospec(github.get_author_in_team)
+        get_author_in_team_mock.return_value = True
+        m.setattr(github, "get_author_in_team", get_author_in_team_mock)
+
+        cancel_pipelines_if_redundant_mock = create_autospec(
+            gitlab_client.cancel_pipelines_if_redundant
+        )
+        cancel_pipelines_if_redundant_mock.return_value = None
+        m.setattr(
+            gitlab_client,
+            "cancel_pipelines_if_redundant",
+            cancel_pipelines_if_redundant_mock,
+        )
+
+        trigger_pipeline_mock = create_autospec(gitlab_client.trigger_pipeline)
+        m.setattr(gitlab_client, "trigger_pipeline", trigger_pipeline_mock)
 
         await github.handle_synchronize(
             gidgethub_client, session, data, gitlab_client, config
@@ -167,7 +203,6 @@ async def test_handle_synchronize_success(session, monkeypatch, config):
         # Verify pipeline was triggered with correct parameters
         gitlab_client.trigger_pipeline.assert_called_once_with(
             gidgethub_client,
-            session,
             head_sha="abc123",
             repo_url="https://api.github.com/repos/test_org/test_repo",
             repo_slug="test_org_test_repo",
@@ -465,12 +500,25 @@ async def test_handle_check_suite_success(session, monkeypatch, config):
     gitlab_client = GitLab(session=session, gl=gidgetlab_client, config=config)
 
     # Mock other functions
-    monkeypatch.setattr(github, "get_author_in_team", AsyncMock(return_value=True))
-    monkeypatch.setattr(github, "is_in_installed_repos", AsyncMock(return_value=True))
-    monkeypatch.setattr(gitlab_client, "trigger_pipeline", AsyncMock())
-    monkeypatch.setattr(github, "get_gitlab_job", AsyncMock(return_value=job_response))
+    get_author_in_team_mock = create_autospec(github.get_author_in_team)
+    get_author_in_team_mock.return_value = True
+    monkeypatch.setattr(github, "get_author_in_team", get_author_in_team_mock)
+
+    is_in_installed_repos_mock = create_autospec(github.is_in_installed_repos)
+    is_in_installed_repos_mock.return_value = True
+    monkeypatch.setattr(github, "is_in_installed_repos", is_in_installed_repos_mock)
+
+    trigger_pipeline_mock = create_autospec(gitlab_client.trigger_pipeline)
+    monkeypatch.setattr(gitlab_client, "trigger_pipeline", trigger_pipeline_mock)
+
+    get_gitlab_job_mock = create_autospec(github.get_gitlab_job)
+    get_gitlab_job_mock.return_value = job_response
+    monkeypatch.setattr(github, "get_gitlab_job", get_gitlab_job_mock)
+
+    get_pipeline_variables_mock = create_autospec(gitlab_client.get_pipeline_variables)
+    get_pipeline_variables_mock.return_value = pipeline_vars
     monkeypatch.setattr(
-        gitlab_client, "get_pipeline_variables", AsyncMock(return_value=pipeline_vars)
+        gitlab_client, "get_pipeline_variables", get_pipeline_variables_mock
     )
 
     await github.handle_check_suite(
