@@ -8,8 +8,6 @@ import gidgetlab.aiohttp
 from sanic.log import logger
 import cachetools
 from aiolimiter import AsyncLimiter
-import contextlib
-import functools
 
 from ci_relay.config import Config
 from ci_relay.github.router import router as github_router
@@ -21,36 +19,21 @@ def add_task(app: Sanic, task):
     app.add_task(task)
 
 
-def with_session(func):
-    @functools.wraps(func)
-    async def wrapper(
-        *args, app: Sanic, session: aiohttp.ClientSession | None = None, **kwargs
-    ):
-        async with contextlib.AsyncExitStack() as stack:
-            if session is None:
-                session = await stack.enter_async_context(
-                    aiohttp.ClientSession(loop=app.loop)
-                )
-            return await func(*args, app=app, session=session, **kwargs)
-
-    return wrapper
-
-
 async def handle_gitlab_webhook(request, *, app: Sanic):
     async with aiohttp.ClientSession(loop=app.loop) as session:
         event = GitLabEvent.from_http(
             request.headers, request.body, secret=app.config.GITLAB_WEBHOOK_SECRET
         )
 
-    gl = gidgetlab.aiohttp.GitLabAPI(
-        session,
-        requester="acts",
-        access_token=app.config.GITLAB_ACCESS_TOKEN,
-        url=app.config.GITLAB_API_URL,
-    )
+        gl = gidgetlab.aiohttp.GitLabAPI(
+            session,
+            requester="acts",
+            access_token=app.config.GITLAB_ACCESS_TOKEN,
+            url=app.config.GITLAB_API_URL,
+        )
 
-    logger.debug("Dispatching event %s", event.event)
-    await gitlab_router.dispatch(event, session=session, app=app, gl=gl)
+        logger.debug("Dispatching event %s", event.event)
+        await gitlab_router.dispatch(event, session=session, app=app, gl=gl)
 
 
 async def handle_github_webhook(request, *, app: Sanic):
