@@ -198,7 +198,7 @@ async def handle_push(
     head_sha = event.after
 
     for user in sender, event.pusher.name:
-        user_in_team = await get_author_in_team(gh, user, org)
+        user_in_team = await get_author_in_team(gh, user, org, config=config)
         logger.debug("Is user %s in team %s: %s", user, config.ALLOW_TEAM, user_in_team)
         if not user_in_team:
             logger.debug("User is not in team, stop processing")
@@ -261,7 +261,7 @@ async def handle_rerequest(
     sender = event.sender.login
     org = event.organization.login
 
-    author_in_team = await get_author_in_team(gh, sender, org)
+    author_in_team = await get_author_in_team(gh, sender, org, config=config)
 
     logger.debug(
         "Is sender %s in team %s: %s", sender, config.ALLOW_TEAM, author_in_team
