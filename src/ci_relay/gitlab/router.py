@@ -5,6 +5,7 @@ from gidgetlab.routing import Router
 from gidgetlab.sansio import Event
 from sanic import Sanic
 from sanic.log import logger
+import gidgetlab.aiohttp
 import asyncio
 
 import ci_relay.github.utils as github
@@ -63,7 +64,7 @@ router = Router()
 async def _on_pipeline_hook(
     event: Event,
     session: aiohttp.ClientSession,
-    gitlab_client: GitLab,
+    gl: gidgetlab.aiohttp.GitLabAPI,
     app: Sanic,
 ):
     logger.debug("Received pipeline hook")
@@ -73,7 +74,8 @@ async def _on_pipeline_hook(
 async def _on_job_hook(
     event: Event,
     session: aiohttp.ClientSession,
-    gitlab_client: GitLab,
+    gl: gidgetlab.aiohttp.GitLabAPI,
     app: Sanic,
 ):
+    gitlab_client = GitLab(session=session, gl=gl, config=app.config)
     await on_job_hook(event, gitlab_client=gitlab_client, app=app, session=session)
