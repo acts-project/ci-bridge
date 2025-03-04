@@ -1,7 +1,10 @@
 import pytest
-from unittest.mock import MagicMock, AsyncMock, Mock
+from unittest.mock import MagicMock, AsyncMock, Mock, create_autospec
 from gidgetlab import sansio
 import json
+from sanic import Sanic
+import asyncio
+from gidgetlab.sansio import Event as GitLabEvent
 
 import ci_relay.gitlab.router as gitlab_router
 from ci_relay.gitlab.router import router
@@ -19,14 +22,12 @@ async def test_gitlab_job_hook(app, monkeypatch, config, session):
     gidgetlab_client = AsyncMock()
 
     with monkeypatch.context() as m:
-        on_job_mocked = AsyncMock()
+        on_job_mocked = create_autospec(gitlab_router.on_job_hook)
         m.setattr(gitlab_router, "on_job_hook", on_job_mocked)
-
-        gitlab_client = GitLab(session=session, gl=gidgetlab_client, config=config)
 
         await router.dispatch(
             event,
-            gitlab_client=gitlab_client,
+            gl=gidgetlab_client,
             app=app,
             session=session,
         )
@@ -204,7 +205,8 @@ async def test_trigger_pipeline_sterile_mode(monkeypatch, config):
     session.post.assert_not_called()
 
 
-def test_gitlab_webhook_success(app, monkeypatch, config):
+@pytest.mark.asyncio
+async def test_gitlab_webhook_success(app, monkeypatch):
     # Create test data
     payload = {
         # "object_kind": "build",
@@ -223,9 +225,24 @@ def test_gitlab_webhook_success(app, monkeypatch, config):
         AsyncMock(return_value=gidgethub_client),
     )
 
+    tasks = []
+
+    def add_task(app: Sanic, task):
+        tasks.append(task)
+
+    monkeypatch.setattr("ci_relay.web.add_task", add_task)
+
+    event = GitLabEvent(event="Job Hook", data=payload)
+
+    monkeypatch.setattr(
+        GitLabEvent,
+        "from_http",
+        MagicMock(return_value=event),
+    )
+
     # Mock on_job_hook
     with monkeypatch.context() as m:
-        on_job_mocked = AsyncMock()
+        on_job_mocked = create_autospec(gitlab_router.on_job_hook)
         m.setattr(gitlab_router, "on_job_hook", on_job_mocked)
         m.setattr("ci_relay.web.get_jwt", AsyncMock(return_value="test_token"))
 
@@ -237,15 +254,19 @@ def test_gitlab_webhook_success(app, monkeypatch, config):
         # Create test request
         headers = {
             "X-Gitlab-Token": "test_secret",
-            "X-Gitlab-Event": "xJob Hook",
+            "X-Gitlab-Event": "Job Hook",
         }
 
         # Call the webhook endpoint using test client
-        app.test_client.post(
+        await app.asgi_client.post(
             "/webhook/gitlab",
             json=payload,
             headers=headers,
         )
+
+        await asyncio.gather(*tasks)
+
+        on_job_mocked.assert_called_once()
 
 
 @pytest.mark.asyncio
