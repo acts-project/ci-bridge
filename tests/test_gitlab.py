@@ -10,7 +10,7 @@ from ci_relay.gitlab import GitLab
 
 
 @pytest.mark.asyncio
-async def test_gitlab_job_hook(app, monkeypatch, aiohttp_session, config):
+async def test_gitlab_job_hook(app, monkeypatch, config, session):
     event = sansio.Event(
         event="Job Hook",
         data={"object_kind": "build", "build_status": "success", "build_id": 123},
@@ -22,15 +22,13 @@ async def test_gitlab_job_hook(app, monkeypatch, aiohttp_session, config):
         on_job_mocked = AsyncMock()
         m.setattr(gitlab_router, "on_job_hook", on_job_mocked)
 
-        gitlab_client = GitLab(
-            session=aiohttp_session, gl=gidgetlab_client, config=config
-        )
+        gitlab_client = GitLab(session=session, gl=gidgetlab_client, config=config)
 
         await router.dispatch(
             event,
             gitlab_client=gitlab_client,
             app=app,
-            session=aiohttp_session,
+            session=session,
         )
         on_job_mocked.assert_called_once()
 

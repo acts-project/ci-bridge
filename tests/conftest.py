@@ -44,7 +44,6 @@ def app(monkeypatch, config) -> Sanic:
 
 
 @pytest_asyncio.fixture
-async def aiohttp_session() -> aiohttp.ClientSession:
-    """Create a aiohttp ClientSession for testing."""
+async def session():
     async with aiohttp.ClientSession() as session:
         yield session

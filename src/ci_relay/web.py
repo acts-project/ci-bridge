@@ -17,6 +17,10 @@ from ci_relay.gitlab.router import router as gitlab_router
 import ci_relay.github.utils as github_utils
 
 
+def add_task(app: Sanic, task):
+    app.add_task(task)
+
+
 def with_session(func):
     @functools.wraps(func)
     async def wrapper(
@@ -27,8 +31,6 @@ def with_session(func):
                 session = await stack.enter_async_context(
                     aiohttp.ClientSession(loop=app.loop)
                 )
-            print("args", *args)
-            print("kwargs", **kwargs)
             return await func(*args, app=app, session=session, **kwargs)
 
     return wrapper
@@ -92,12 +94,11 @@ def create_app(*, config: Config | None = None):
     @app.listener("before_server_start")
     async def init(app, loop):
         logger.debug("Creating aiohttp session")
-        app.ctx.aiohttp_session = aiohttp.ClientSession(loop=loop)
-
-        gh = gh_aiohttp.GitHubAPI(app.ctx.aiohttp_session, __name__)
-        jwt = get_jwt(app_id=app.config.APP_ID, private_key=app.config.PRIVATE_KEY)
-        app_info = await gh.getitem("/app", jwt=jwt)
-        app.ctx.app_info = app_info
+        async with aiohttp.ClientSession(loop=loop) as session:
+            gh = gh_aiohttp.GitHubAPI(session, __name__)
+            jwt = get_jwt(app_id=app.config.APP_ID, private_key=app.config.PRIVATE_KEY)
+            app_info = await gh.getitem("/app", jwt=jwt)
+            app.ctx.app_info = app_info
 
     @app.route("/")
     async def index(request):
@@ -110,44 +111,45 @@ def create_app(*, config: Config | None = None):
             return response.text("Rate limited", status=429)
         await limiter.acquire()
 
-        gh = gh_aiohttp.GitHubAPI(app.ctx.aiohttp_session, __name__)
+        async with aiohttp.ClientSession(loop=app.loop) as session:
+            gh = gh_aiohttp.GitHubAPI(session, __name__)
 
-        github_ok = False
-        gitlab_ok = False
-
-        logger.info("Checking health")
-        try:
-            token = get_jwt(
-                app_id=app.config.APP_ID, private_key=app.config.PRIVATE_KEY
-            )
-            app_info = await gh.getitem("/app", jwt=token)
-            if app_info is None:
-                github_ok = False
-                logger.error("GitHub App info is None")
-            logger.info("GitHub ok")
-            github_ok = True
-        except Exception as e:
-            logger.error("GitHub App info failed: %s", e)
-            logger.exception(e)
             github_ok = False
-
-        try:
-            gl = gidgetlab.aiohttp.GitLabAPI(
-                app.ctx.aiohttp_session,
-                requester="acts",
-                access_token=config.GITLAB_ACCESS_TOKEN,
-                url=config.GITLAB_API_URL,
-            )
-            projects = await gl.getitem(f"/projects/{config.GITLAB_PROJECT_ID}")
-            if projects is None:
-                gitlab_ok = False
-                logger.error("GitLab project info is None")
-            logger.info("GitLab ok")
-            gitlab_ok = True
-        except Exception as e:
-            logger.error("GitLab project info failed: %s", e)
-            logger.exception(e)
             gitlab_ok = False
+
+            logger.info("Checking health")
+            try:
+                token = get_jwt(
+                    app_id=app.config.APP_ID, private_key=app.config.PRIVATE_KEY
+                )
+                app_info = await gh.getitem("/app", jwt=token)
+                if app_info is None:
+                    github_ok = False
+                    logger.error("GitHub App info is None")
+                logger.info("GitHub ok")
+                github_ok = True
+            except Exception as e:
+                logger.error("GitHub App info failed: %s", e)
+                logger.exception(e)
+                github_ok = False
+
+            try:
+                gl = gidgetlab.aiohttp.GitLabAPI(
+                    session,
+                    requester="acts",
+                    access_token=config.GITLAB_ACCESS_TOKEN,
+                    url=config.GITLAB_API_URL,
+                )
+                projects = await gl.getitem(f"/projects/{config.GITLAB_PROJECT_ID}")
+                if projects is None:
+                    gitlab_ok = False
+                    logger.error("GitLab project info is None")
+                logger.info("GitLab ok")
+                gitlab_ok = True
+            except Exception as e:
+                logger.error("GitLab project info failed: %s", e)
+                logger.exception(e)
+                gitlab_ok = False
 
         status = 200 if github_ok and gitlab_ok else 500
         github_str = "ok" if github_ok else "not ok"
@@ -159,7 +161,7 @@ def create_app(*, config: Config | None = None):
     async def github(request):
         logger.debug("Webhook received on github endpoint")
 
-        app.add_task(handle_github_webhook(request, app))
+        add_task(app, handle_github_webhook(request, app=app))
 
         return response.empty(200)
 
@@ -167,7 +169,7 @@ def create_app(*, config: Config | None = None):
     async def gitlab(request):
         logger.debug("Webhook received on gitlab endpoint")
 
-        app.add_task(handle_gitlab_webhook(request, app))
+        add_task(app, handle_gitlab_webhook(request, app=app))
 
         return response.empty(200)
 
@@ -176,9 +178,9 @@ def create_app(*, config: Config | None = None):
         logger.debug("Webhook received on compatibility endpoint")
 
         if "X-Gitlab-Event" in request.headers:
-            app.add_task(handle_gitlab_webhook(request, app))
+            add_task(app, handle_gitlab_webhook(request, app=app))
         elif "X-GitHub-Event" in request.headers:
-            app.add_task(handle_github_webhook(request, app))
+            add_task(app, handle_github_webhook(request, app=app))
 
         return response.empty(200)
 

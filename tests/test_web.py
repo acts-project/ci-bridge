@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock, MagicMock, Mock
 from gidgethub.sansio import Event as GitHubEvent
 from gidgetlab.sansio import Event as GitLabEvent
 from sanic import Sanic
+import asyncio
 
 import ci_relay.web as web
 import ci_relay.github.router as github_router
@@ -127,61 +128,106 @@ async def test_handle_gitlab_webhook(app, monkeypatch):
     assert call_args[1]["gl"] == mock_gitlab_client
 
 
-def test_webhook_endpoints(app: Sanic, monkeypatch):
-    # Mock config
-
-    # Mock handlers
-    monkeypatch.setattr(web, "handle_github_webhook", AsyncMock())
-    monkeypatch.setattr(web, "handle_gitlab_webhook", AsyncMock())
-
+@pytest.mark.asyncio
+async def test_webhook_endpoints(app: Sanic, monkeypatch):
+    monkeypatch.setattr("ci_relay.web.get_jwt", Mock(return_value="test_token"))
+    monkeypatch.setattr(app.config, "GITLAB_WEBHOOK_SECRET", "test_secret")
     monkeypatch.setattr("ci_relay.web.get_jwt", Mock(return_value="test_token"))
 
-    gh = AsyncMock()
-    monkeypatch.setattr("gidgethub.aiohttp.GitHubAPI", Mock(return_value=gh))
-
-    gh.getitem = AsyncMock()
-
-    # Test GitHub webhook endpoint
-    request, response = app.test_client.post(
-        "/webhook/github",
-        json={"installation": {"id": 12345}},
-        headers={
-            "X-GitHub-Event": "pull_request",
-            "X-Hub-Signature-256": "sha256=test",
-        },
+    mock_github_response = MagicMock()
+    mock_github_response.getitem = AsyncMock(return_value={"id": 12345})
+    monkeypatch.setattr(
+        "gidgethub.aiohttp.GitHubAPI", MagicMock(return_value=mock_github_response)
     )
-    assert response.status_code == 200
-    web.handle_github_webhook.assert_called_once()
 
-    # Test GitLab webhook endpoint
-    request, response = app.test_client.post(
-        "/webhook/gitlab",
-        json={"object_kind": "build", "build_status": "success"},
-        headers={"X-Gitlab-Event": "Job Hook", "X-Gitlab-Token": "test_secret"},
-    )
-    assert response.status_code == 200
-    web.handle_gitlab_webhook.assert_called_once()
+    tasks = []
 
-    # Test compatibility endpoint with GitLab event
-    request, response = app.test_client.post(
-        "/webhook",
-        json={"object_kind": "build", "build_status": "success"},
-        headers={"X-Gitlab-Event": "Job Hook", "X-Gitlab-Token": "test_secret"},
-    )
-    assert response.status_code == 200
-    assert web.handle_gitlab_webhook.call_count == 2
+    def add_task(app: Sanic, task):
+        tasks.append(task)
 
-    # Test compatibility endpoint with GitHub event
-    request, response = app.test_client.post(
-        "/webhook",
-        json={"installation": {"id": 12345}},
-        headers={
-            "X-GitHub-Event": "pull_request",
-            "X-Hub-Signature-256": "sha256=test",
-        },
+    monkeypatch.setattr("ci_relay.web.add_task", add_task)
+
+    payload = {"installation": {"id": 12345}}
+    event = GitHubEvent(event="pull_request", data=payload, delivery_id="test")
+    monkeypatch.setattr(
+        GitHubEvent,
+        "from_http",
+        MagicMock(return_value=event),
     )
-    assert response.status_code == 200
-    assert web.handle_github_webhook.call_count == 2
+
+    # Mock client_for_installation
+    mock_github_client = AsyncMock()
+    monkeypatch.setattr(
+        "ci_relay.github.utils.client_for_installation",
+        AsyncMock(return_value=mock_github_client),
+    )
+
+    with monkeypatch.context() as m:
+        m.setattr("ci_relay.github.router.router.dispatch", AsyncMock())
+        # Test GitHub webhook endpoint
+        _, response = await app.asgi_client.post(
+            "/webhook/github",
+            json=payload,
+            headers={
+                "X-GitHub-Event": "pull_request",
+                # "X-Hub-Signature-256": "sha256=test",
+            },
+        )
+        assert response.status_code == 200
+        await asyncio.gather(*tasks)
+
+        github_router.router.dispatch.assert_called_once()
+
+    tasks = []
+
+    with monkeypatch.context() as m:
+        m.setattr("ci_relay.gitlab.router.router.dispatch", AsyncMock())
+        # Test GitLab webhook endpoint
+        _, response = await app.asgi_client.post(
+            "/webhook/gitlab",
+            json={"object_kind": "build", "build_status": "success"},
+            headers={"X-Gitlab-Event": "Job Hook", "X-Gitlab-Token": "test_secret"},
+        )
+        assert response.status_code == 200
+
+        await asyncio.gather(*tasks)
+
+        gitlab_router.router.dispatch.assert_called_once()
+
+    tasks = []
+
+    with monkeypatch.context() as m:
+        m.setattr("ci_relay.web.handle_github_webhook", AsyncMock())
+        m.setattr("ci_relay.web.handle_gitlab_webhook", AsyncMock())
+
+        # Test compatibility endpoint with GitLab event
+        _, response = await app.asgi_client.post(
+            "/webhook",
+            json={"object_kind": "build", "build_status": "success"},
+            headers={"X-Gitlab-Event": "Job Hook", "X-Gitlab-Token": "test_secret"},
+        )
+        assert response.status_code == 200
+
+        await asyncio.gather(*tasks)
+
+        web.handle_gitlab_webhook.assert_called_once()
+
+        tasks = []
+
+        # Test compatibility endpoint with GitHub event
+        _, response = await app.asgi_client.post(
+            "/webhook",
+            json={"installation": {"id": 12345}},
+            headers={
+                "X-GitHub-Event": "pull_request",
+                "X-Hub-Signature-256": "sha256=test",
+            },
+        )
+        assert response.status_code == 200
+
+        await asyncio.gather(*tasks)
+
+        web.handle_github_webhook.assert_called_once()
 
 
 def test_health_check(app, monkeypatch):

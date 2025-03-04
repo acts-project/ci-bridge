@@ -181,9 +181,7 @@ async def test_handle_synchronize_success(session, monkeypatch, config):
 @pytest.mark.parametrize(
     "action", ["synchronize", "opened", "reopened", "ready_for_review"]
 )
-async def test_github_pr_webhook_allowed_actions(
-    app, monkeypatch, action, aiohttp_session
-):
+async def test_github_pr_webhook_allowed_actions(app, monkeypatch, action):
     event = sansio.Event(
         event="pull_request",
         data={
@@ -217,19 +215,17 @@ async def test_github_pr_webhook_allowed_actions(
 
         await router.dispatch(
             event,
-            session=aiohttp_session,
             app=app,
             gh=gidgethub_client,
             gl=gidgetlab_client,
+            session=session,
         )
         handle_sync_mocked.assert_called_once()
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("action", ["closed", "merged", "reviewed", "labeled"])
-async def test_github_pr_webhook_ignored_actions(
-    app, monkeypatch, action, aiohttp_session
-):
+async def test_github_pr_webhook_ignored_actions(app, monkeypatch, action):
     event = sansio.Event(
         event="pull_request",
         data={
@@ -263,10 +259,10 @@ async def test_github_pr_webhook_ignored_actions(
 
         await router.dispatch(
             event,
-            session=aiohttp_session,
             app=app,
             gh=gidgethub_client,
             gl=gidgetlab_client,
+            session=session,
         )
         handle_sync_mocked.assert_not_called()
 
