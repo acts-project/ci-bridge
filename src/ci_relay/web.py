@@ -11,7 +11,7 @@ from aiolimiter import AsyncLimiter
 import contextlib
 import functools
 
-from ci_relay import config
+from ci_relay.config import Config
 from ci_relay.github.router import router as github_router
 from ci_relay.gitlab.router import router as gitlab_router
 import ci_relay.github.utils as github_utils
@@ -37,14 +37,14 @@ def with_session(func):
 @with_session
 async def handle_gitlab_webhook(request, *, app: Sanic, session: aiohttp.ClientSession):
     event = GitLabEvent.from_http(
-        request.headers, request.body, secret=config.GITLAB_WEBHOOK_SECRET
+        request.headers, request.body, secret=app.config.GITLAB_WEBHOOK_SECRET
     )
 
     gl = gidgetlab.aiohttp.GitLabAPI(
         session,
         requester="acts",
-        access_token=config.GITLAB_ACCESS_TOKEN,
-        url=config.GITLAB_API_URL,
+        access_token=app.config.GITLAB_ACCESS_TOKEN,
+        url=app.config.GITLAB_API_URL,
     )
 
     logger.debug("Dispatching event %s", event.event)
@@ -68,17 +68,21 @@ async def handle_github_webhook(request, *, app: Sanic, session: aiohttp.ClientS
     gl = gidgetlab.aiohttp.GitLabAPI(
         session,
         requester="acts",
-        access_token=config.GITLAB_ACCESS_TOKEN,
-        url=config.GITLAB_API_URL,
+        access_token=app.config.GITLAB_ACCESS_TOKEN,
+        url=app.config.GITLAB_API_URL,
     )
 
     logger.debug("Dispatching event %s", event.event)
     await github_router.dispatch(event, session=session, gh=gh, app=app, gl=gl)
 
 
-def create_app():
+def create_app(*, config: Config | None = None):
     app = Sanic("ci-relay")
-    app.update_config(config)
+    if config is None:
+        config = Config()
+
+    app.update_config(config.model_dump())
+
     logger.setLevel(config.OVERRIDE_LOGGING)
 
     app.ctx.cache = cachetools.LRUCache(maxsize=500)

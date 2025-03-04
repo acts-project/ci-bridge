@@ -44,7 +44,7 @@ test_repository = Repository(
 
 
 @pytest.mark.asyncio
-async def test_handle_synchronize_draft_pr(session, monkeypatch):
+async def test_handle_synchronize_draft_pr(session, monkeypatch, config):
     data = PullRequestEvent(
         pull_request=PullRequest(
             draft=True,
@@ -68,7 +68,7 @@ async def test_handle_synchronize_draft_pr(session, monkeypatch):
     gidgethub_client = AsyncMock()
     gidgetlab_client = AsyncMock()
 
-    gitlab_client = GitLab(session=session, gl=gidgetlab_client)
+    gitlab_client = GitLab(session=session, gl=gidgetlab_client, config=config)
 
     # patch.object(gitlab_client, "cancel_pipelines_if_redundant", AsyncMock())
     # patch.object(gitlab_client, "trigger_pipeline", AsyncMock())
@@ -79,7 +79,7 @@ async def test_handle_synchronize_draft_pr(session, monkeypatch):
         m.setattr(gitlab_client, "trigger_pipeline", AsyncMock())
 
         await github.handle_synchronize(
-            gidgethub_client, session, data, gidgetlab_client
+            gidgethub_client, session, data, gidgetlab_client, config
         )
 
         # Verify no pipeline was triggered
@@ -87,7 +87,7 @@ async def test_handle_synchronize_draft_pr(session, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_handle_synchronize_author_not_in_team(session, monkeypatch):
+async def test_handle_synchronize_author_not_in_team(session, monkeypatch, config):
     data = PullRequestEvent(
         pull_request=PullRequest(
             draft=False,
@@ -111,7 +111,7 @@ async def test_handle_synchronize_author_not_in_team(session, monkeypatch):
     gidgethub_client = AsyncMock()
     gidgetlab_client = AsyncMock()
 
-    gitlab_client = GitLab(session=session, gl=gidgetlab_client)
+    gitlab_client = GitLab(session=session, gl=gidgetlab_client, config=config)
 
     with monkeypatch.context() as m:
         m.setattr(github, "get_author_in_team", AsyncMock(return_value=False))
@@ -120,7 +120,7 @@ async def test_handle_synchronize_author_not_in_team(session, monkeypatch):
         m.setattr(gitlab_client, "trigger_pipeline", AsyncMock())
 
         await github.handle_synchronize(
-            gidgethub_client, session, data, gidgetlab_client
+            gidgethub_client, session, data, gidgetlab_client, config
         )
 
         # Verify rejection status was added and no pipeline was triggered
@@ -129,7 +129,7 @@ async def test_handle_synchronize_author_not_in_team(session, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_handle_synchronize_success(session, monkeypatch):
+async def test_handle_synchronize_success(session, monkeypatch, config):
     data = PullRequestEvent(
         pull_request=PullRequest(
             draft=False,
@@ -153,14 +153,16 @@ async def test_handle_synchronize_success(session, monkeypatch):
     gidgethub_client = AsyncMock()
     gidgetlab_client = AsyncMock()
 
-    gitlab_client = GitLab(session=session, gl=gidgetlab_client)
+    gitlab_client = GitLab(session=session, gl=gidgetlab_client, config=config)
 
     with monkeypatch.context() as m:
         m.setattr(github, "get_author_in_team", AsyncMock(return_value=True))
         m.setattr(gitlab_client, "cancel_pipelines_if_redundant", AsyncMock())
         m.setattr(gitlab_client, "trigger_pipeline", AsyncMock())
 
-        await github.handle_synchronize(gidgethub_client, session, data, gitlab_client)
+        await github.handle_synchronize(
+            gidgethub_client, session, data, gitlab_client, config
+        )
 
         # Verify pipeline was triggered with correct parameters
         gitlab_client.trigger_pipeline.assert_called_once_with(
@@ -270,14 +272,14 @@ async def test_github_pr_webhook_ignored_actions(
 
 
 @pytest.mark.asyncio
-async def test_add_rejection_status(monkeypatch):
+async def test_add_rejection_status(config):
     head_sha = "abc123"
     repo_url = "https://api.github.com/repos/org/repo"
 
     gidgethub_client = AsyncMock()
     gidgethub_client.post = AsyncMock()
 
-    await github.add_rejection_status(gidgethub_client, head_sha, repo_url)
+    await github.add_rejection_status(gidgethub_client, head_sha, repo_url, config)
 
     # Verify the post was called with correct parameters
     gidgethub_client.post.assert_called_once_with(
@@ -297,7 +299,7 @@ async def test_add_rejection_status(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_add_failure_status(monkeypatch):
+async def test_add_failure_status(config):
     head_sha = "abc123"
     repo_url = "https://api.github.com/repos/org/repo"
     message = "Pipeline creation failed"
@@ -305,7 +307,9 @@ async def test_add_failure_status(monkeypatch):
     gidgethub_client = AsyncMock()
     gidgethub_client.post = AsyncMock()
 
-    await github.add_failure_status(gidgethub_client, head_sha, repo_url, message)
+    await github.add_failure_status(
+        gidgethub_client, head_sha, repo_url, message, config
+    )
 
     # Verify the post was called with correct parameters
     gidgethub_client.post.assert_called_once_with(
@@ -325,14 +329,7 @@ async def test_add_failure_status(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_handle_check_suite_success(session, monkeypatch):
-    # Mock APP_ID and GitLab config
-    monkeypatch.setattr("ci_relay.config.APP_ID", 12345)
-    monkeypatch.setattr("ci_relay.config.GITLAB_API_URL", "http://localhost")
-    monkeypatch.setattr("ci_relay.config.GITLAB_ACCESS_TOKEN", "test_token")
-    monkeypatch.setattr("ci_relay.config.GITLAB_PROJECT_ID", "456")
-    monkeypatch.setattr("ci_relay.config.TRIGGER_SECRET", "test_secret")
-
+async def test_handle_check_suite_success(session, monkeypatch, config):
     # Create test data using the model
     event = CheckSuiteEvent(
         action="completed",
@@ -341,7 +338,7 @@ async def test_handle_check_suite_success(session, monkeypatch):
         repository=test_repository,
         check_suite=CheckSuite(
             id=123456,
-            app=CheckSuiteApp(id=12345),  # Matching APP_ID
+            app=CheckSuiteApp(id=config.APP_ID),  # matching APP ID
             head_sha="abc123",
             check_runs_url="https://api.github.com/repos/test_org/test_repo/check-runs",
         ),
@@ -357,7 +354,7 @@ async def test_handle_check_suite_success(session, monkeypatch):
 
     # Create a real signature for the test payload
     bridge_payload = '{"clone_url": "https://github.com/test_org/test_repo.git", "head_sha": "abc123", "head_ref": "main"}'
-    signature = Signature().create(bridge_payload)
+    signature = Signature(config.TRIGGER_SECRET).create(bridge_payload)
 
     pipeline_vars = {
         "BRIDGE_PAYLOAD": bridge_payload,
@@ -381,7 +378,7 @@ async def test_handle_check_suite_success(session, monkeypatch):
             return AsyncIterator([])
 
     gidgetlab_client = MockGitLabClient()
-    gitlab_client = GitLab(session=session, gl=gidgetlab_client)
+    gitlab_client = GitLab(session=session, gl=gidgetlab_client, config=config)
 
     # Mock other functions
     monkeypatch.setattr(github, "get_author_in_team", AsyncMock(return_value=True))
@@ -392,7 +389,9 @@ async def test_handle_check_suite_success(session, monkeypatch):
         gitlab_client, "get_pipeline_variables", AsyncMock(return_value=pipeline_vars)
     )
 
-    await github.handle_check_suite(gidgethub_client, session, event, gitlab_client)
+    await github.handle_check_suite(
+        gidgethub_client, session, event, gitlab_client, config
+    )
 
     # Verify the pipeline was triggered
     gitlab_client.trigger_pipeline.assert_called_once()
@@ -406,11 +405,7 @@ async def test_handle_check_suite_success(session, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_handle_push_success(session, monkeypatch):
-    # Mock APP_ID and GitLab config
-    monkeypatch.setattr("ci_relay.config.APP_ID", 12345)
-    monkeypatch.setattr("ci_relay.config.GITLAB_API_URL", "http://localhost")
-
+async def test_handle_push_success(session, monkeypatch, config):
     # Create test data using the model
     event = PushEvent(
         sender=Sender(login="test_user"),
@@ -425,7 +420,7 @@ async def test_handle_push_success(session, monkeypatch):
     gidgethub_client = AsyncMock()
     gidgetlab_client = AsyncMock()
 
-    gitlab_client = GitLab(session=session, gl=gidgetlab_client)
+    gitlab_client = GitLab(session=session, gl=gidgetlab_client, config=config)
 
     with monkeypatch.context() as m:
         m.setattr(github, "get_author_in_team", AsyncMock(return_value=True))
@@ -433,7 +428,9 @@ async def test_handle_push_success(session, monkeypatch):
         m.setattr(gitlab_client, "cancel_pipelines_if_redundant", AsyncMock())
         m.setattr(gitlab_client, "trigger_pipeline", AsyncMock())
 
-        await github.handle_push(gidgethub_client, session, event, gitlab_client)
+        await github.handle_push(
+            gidgethub_client, session, event, gitlab_client, config
+        )
 
         # Verify pipeline was triggered with correct parameters
         gitlab_client.trigger_pipeline.assert_called_once_with(
@@ -449,7 +446,7 @@ async def test_handle_push_success(session, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_handle_push_user_not_in_team(session, monkeypatch):
+async def test_handle_push_user_not_in_team(session, monkeypatch, config):
     event = PushEvent(
         sender=Sender(login="test_user"),
         organization=Organization(login="test_org"),
@@ -462,7 +459,7 @@ async def test_handle_push_user_not_in_team(session, monkeypatch):
 
     gidgethub_client = AsyncMock()
     gidgetlab_client = AsyncMock()
-    gitlab_client = GitLab(session=session, gl=gidgetlab_client)
+    gitlab_client = GitLab(session=session, gl=gidgetlab_client, config=config)
 
     with monkeypatch.context() as m:
         m.setattr(github, "get_author_in_team", AsyncMock(return_value=False))
@@ -470,7 +467,9 @@ async def test_handle_push_user_not_in_team(session, monkeypatch):
         m.setattr(gitlab_client, "cancel_pipelines_if_redundant", AsyncMock())
         m.setattr(gitlab_client, "trigger_pipeline", AsyncMock())
 
-        await github.handle_push(gidgethub_client, session, event, gitlab_client)
+        await github.handle_push(
+            gidgethub_client, session, event, gitlab_client, config
+        )
 
         # Verify rejection status was added and no pipeline was triggered
         github.add_rejection_status.assert_called_once()
@@ -478,11 +477,9 @@ async def test_handle_push_user_not_in_team(session, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_handle_rerequest_success(session, monkeypatch):
+async def test_handle_rerequest_success(session, monkeypatch, config):
     # Mock GitLab config
-    monkeypatch.setattr("ci_relay.config.GITLAB_API_URL", "http://localhost")
-    monkeypatch.setattr("ci_relay.config.GITLAB_ACCESS_TOKEN", "test_token")
-    monkeypatch.setattr("ci_relay.config.STERILE", False)
+    monkeypatch.setattr(config, "GITLAB_ACCESS_TOKEN", "test_token")
 
     # Create test data using the model
     event = RerequestEvent(
@@ -513,7 +510,7 @@ async def test_handle_rerequest_success(session, monkeypatch):
         m.setattr(github, "get_gitlab_job", AsyncMock(return_value={"id": 789}))
         m.setattr(session, "post", mock_post)
 
-        await github.handle_rerequest(gidgethub_client, session, event)
+        await github.handle_rerequest(gidgethub_client, session, event, config)
 
         # Verify job retry was posted
         mock_post.assert_called_once_with(
@@ -523,10 +520,9 @@ async def test_handle_rerequest_success(session, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_handle_rerequest_user_not_in_team(session, monkeypatch):
+async def test_handle_rerequest_user_not_in_team(session, monkeypatch, config):
     # Mock GitLab config
-    monkeypatch.setattr("ci_relay.config.GITLAB_API_URL", "http://localhost")
-    monkeypatch.setattr("ci_relay.config.GITLAB_ACCESS_TOKEN", "test_token")
+    monkeypatch.setattr(config, "GITLAB_ACCESS_TOKEN", "test_token")
 
     # Create test data using the model
     event = RerequestEvent(
@@ -545,14 +541,14 @@ async def test_handle_rerequest_user_not_in_team(session, monkeypatch):
         m.setattr(github, "get_gitlab_job", AsyncMock(return_value={"id": 789}))
         m.setattr(session, "post", AsyncMock())
 
-        await github.handle_rerequest(gidgethub_client, session, event)
+        await github.handle_rerequest(gidgethub_client, session, event, config)
 
         # Verify no job retry was posted
         session.post.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_handle_rerequest_incompatible_url(session, monkeypatch):
+async def test_handle_rerequest_incompatible_url(session, monkeypatch, config):
     # Create test data using the model
     event = RerequestEvent(
         sender=Sender(login="test_user"),
@@ -575,7 +571,7 @@ async def test_handle_rerequest_incompatible_url(session, monkeypatch):
         m.setattr(session, "post", AsyncMock())
 
         with pytest.raises(ValueError, match="Incompatible external id / job url"):
-            await github.handle_rerequest(gidgethub_client, session, event)
+            await github.handle_rerequest(gidgethub_client, session, event, config)
 
         # Verify no job retry was posted
         session.post.assert_not_called()

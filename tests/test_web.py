@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, Mock
 from gidgethub.sansio import Event as GitHubEvent
 from gidgetlab.sansio import Event as GitLabEvent
 from sanic import Sanic
@@ -11,11 +11,6 @@ import ci_relay.gitlab.router as gitlab_router
 
 @pytest.mark.asyncio
 async def test_handle_github_webhook(app, monkeypatch):
-    # Mock config
-    monkeypatch.setattr("ci_relay.config.WEBHOOK_SECRET", "test_secret")
-    monkeypatch.setattr("ci_relay.config.GITLAB_ACCESS_TOKEN", "test_token")
-    monkeypatch.setattr("ci_relay.config.GITLAB_API_URL", "http://localhost")
-
     # Create test data
     payload = {
         "installation": {"id": 12345},
@@ -82,11 +77,6 @@ async def test_handle_github_webhook(app, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_handle_gitlab_webhook(app, monkeypatch):
-    # Mock config
-    monkeypatch.setattr("ci_relay.config.GITLAB_WEBHOOK_SECRET", "test_secret")
-    monkeypatch.setattr("ci_relay.config.GITLAB_ACCESS_TOKEN", "test_token")
-    monkeypatch.setattr("ci_relay.config.GITLAB_API_URL", "http://localhost")
-
     # Create test data
     payload = {
         "object_kind": "build",
@@ -139,14 +129,17 @@ async def test_handle_gitlab_webhook(app, monkeypatch):
 
 def test_webhook_endpoints(app: Sanic, monkeypatch):
     # Mock config
-    monkeypatch.setattr("ci_relay.config.WEBHOOK_SECRET", "test_secret")
-    monkeypatch.setattr("ci_relay.config.GITLAB_WEBHOOK_SECRET", "test_secret")
-    monkeypatch.setattr("ci_relay.config.GITLAB_ACCESS_TOKEN", "test_token")
-    monkeypatch.setattr("ci_relay.config.GITLAB_API_URL", "http://localhost")
 
     # Mock handlers
     monkeypatch.setattr(web, "handle_github_webhook", AsyncMock())
     monkeypatch.setattr(web, "handle_gitlab_webhook", AsyncMock())
+
+    monkeypatch.setattr("ci_relay.web.get_jwt", Mock(return_value="test_token"))
+
+    gh = AsyncMock()
+    monkeypatch.setattr("gidgethub.aiohttp.GitHubAPI", Mock(return_value=gh))
+
+    gh.getitem = AsyncMock()
 
     # Test GitHub webhook endpoint
     request, response = app.test_client.post(
@@ -193,11 +186,7 @@ def test_webhook_endpoints(app: Sanic, monkeypatch):
 
 def test_health_check(app, monkeypatch):
     # Mock config
-    monkeypatch.setattr("ci_relay.config.APP_ID", 12345)
-    monkeypatch.setattr("ci_relay.config.PRIVATE_KEY", "test_key")
-    monkeypatch.setattr("ci_relay.config.GITLAB_ACCESS_TOKEN", "test_token")
-    monkeypatch.setattr("ci_relay.config.GITLAB_API_URL", "http://localhost")
-    monkeypatch.setattr("ci_relay.config.GITLAB_PROJECT_ID", "456")
+    monkeypatch.setattr("ci_relay.web.get_jwt", Mock(return_value="test_token"))
 
     # Mock GitHub API response
     mock_github_response = MagicMock()

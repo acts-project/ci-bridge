@@ -31,7 +31,7 @@ async def on_job_hook(
     bridge_payload = variables["BRIDGE_PAYLOAD"]
     signature = variables["TRIGGER_SIGNATURE"]
 
-    if not Signature().verify(bridge_payload, signature):
+    if not Signature(app.config.TRIGGER_SECRET).verify(bridge_payload, signature):
         logger.error("Signatures do not match")
         return
 

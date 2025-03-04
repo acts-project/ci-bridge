@@ -1,11 +1,9 @@
 import hmac
 from typing import Union
 
-from ci_relay import config
-
 
 class Signature:
-    def __init__(self, secret: str = config.TRIGGER_SECRET):
+    def __init__(self, secret: str):
         self.secret = secret
 
     def create(self, payload: Union[str, bytes]) -> str:

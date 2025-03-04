@@ -40,7 +40,7 @@ async def on_pr(
     if data.action not in ("synchronize", "opened", "reopened", "ready_for_review"):
         return
 
-    return await handle_synchronize(gh, session, data, gl=gl)
+    return await handle_synchronize(gh, session, data, gl=gl, config=app.config)
 
 
 @router.register("ping")
@@ -60,7 +60,7 @@ async def on_check_run(
     if data.action != "rerequested":
         return
     logger.debug("Received request for check rerun")
-    await handle_rerequest(gh, session, data)
+    await handle_rerequest(gh, session, data, config=app.config)
 
 
 @router.register("check_suite")
@@ -74,7 +74,7 @@ async def on_check_suite(
     data = CheckSuiteEvent(**event.data)
     if data.action not in ("rerequested",):
         return
-    await handle_check_suite(gh, session, data, gl=gl)
+    await handle_check_suite(gh, session, data, gl=gl, config=app.config)
 
 
 @router.register("push")
@@ -87,4 +87,4 @@ async def on_push(
 ):
     logger.debug("Received push event")
     data = PushEvent(**event.data)
-    await handle_push(gh, session, data, gl=gl)
+    await handle_push(gh, session, data, gl=gl, config=app.config)

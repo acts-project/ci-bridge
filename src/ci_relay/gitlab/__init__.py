@@ -5,23 +5,24 @@ from gidgetlab.abc import GitLabAPI
 from gidgethub.abc import GitHubAPI
 from sanic.log import logger
 
-from ci_relay import config
+from ci_relay.config import Config
 from ci_relay.gitlab.models import PipelineTriggerData
 from ci_relay.signature import Signature
 
 
 class GitLab:
-    def __init__(self, session: aiohttp.ClientSession, gl: GitLabAPI):
+    def __init__(self, session: aiohttp.ClientSession, gl: GitLabAPI, config: Config):
         self.session = session
         self.gl = gl
         self._headers = {"Private-Token": config.GITLAB_ACCESS_TOKEN}
         self._ansi_escape = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/ ]*[@-~])")
+        self.config = config
 
     def get_pipeline_url(self, project_id: int, pipeline_id: int) -> str:
-        return f"{config.GITLAB_API_URL}/projects/{project_id}/pipelines/{pipeline_id}"
+        return f"{self.config.GITLAB_API_URL}/projects/{project_id}/pipelines/{pipeline_id}"
 
     def get_job_url(self, project_id: int, job_id: int) -> str:
-        return f"{config.GITLAB_API_URL}/projects/{project_id}/jobs/{job_id}"
+        return f"{self.config.GITLAB_API_URL}/projects/{project_id}/jobs/{job_id}"
 
     async def get_pipeline(self, project_id: int, pipeline_id: int):
         full_pipeline_url = self.get_pipeline_url(project_id, pipeline_id)
@@ -45,7 +46,7 @@ class GitLab:
         return self._ansi_escape.sub("", text)
 
     async def get_pipeline_variables(self, project_id: int, pipeline_id: int):
-        full_pipeline_url = f"{config.GITLAB_API_URL}/projects/{project_id}/pipelines/{pipeline_id}/variables"
+        full_pipeline_url = f"{self.config.GITLAB_API_URL}/projects/{project_id}/pipelines/{pipeline_id}/variables"
         async with self.session.get(full_pipeline_url, headers=self._headers) as resp:
             resp.raise_for_status()
             data = await resp.json()
@@ -56,7 +57,7 @@ class GitLab:
         return output
 
     async def get_project(self, project_id: int):
-        full_pipeline_url = f"{config.GITLAB_API_URL}/projects/{project_id}"
+        full_pipeline_url = f"{self.config.GITLAB_API_URL}/projects/{project_id}"
         async with self.session.get(full_pipeline_url, headers=self._headers) as resp:
             resp.raise_for_status()
             return await resp.json()
@@ -68,11 +69,11 @@ class GitLab:
         logger.debug("Checking for redundant pipelines")
         for scope in ["running", "pending"]:
             async for pipeline in self.gl.getiter(
-                f"/projects/{config.GITLAB_PROJECT_ID}/pipelines", {"scope": scope}
+                f"/projects/{self.config.GITLAB_PROJECT_ID}/pipelines", {"scope": scope}
             ):
                 variables = {}
                 for item in await self.gl.getitem(
-                    f"/projects/{config.GITLAB_PROJECT_ID}/pipelines/{pipeline['id']}/variables"
+                    f"/projects/{self.config.GITLAB_PROJECT_ID}/pipelines/{pipeline['id']}/variables"
                 ):
                     variables[item["key"]] = item["value"]
 
@@ -86,9 +87,9 @@ class GitLab:
                         head_ref,
                         clone_url,
                     )
-                    if not config.STERILE:
+                    if not self.config.STERILE:
                         await self.gl.post(
-                            f"/projects/{config.GITLAB_PROJECT_ID}/pipelines/{pipeline['id']}/cancel",
+                            f"/projects/{self.config.GITLAB_PROJECT_ID}/pipelines/{pipeline['id']}/cancel",
                             data=None,
                         )
 
@@ -102,7 +103,7 @@ class GitLab:
         clone_url: str,
         head_ref: str,
     ):
-        if config.STERILE:
+        if self.config.STERILE:
             logger.debug("Sterile mode: skipping pipeline trigger")
             return
 
@@ -126,13 +127,14 @@ class GitLab:
         )
         payload = json.dumps(data.model_dump())
 
-        signature = Signature().create(payload)
+        signature = Signature(self.config.TRIGGER_SECRET).create(payload)
 
         logger.debug("Triggering pipeline on gitlab")
+        print(self.session)
         async with self.session.post(
-            config.GITLAB_TRIGGER_URL,
+            self.config.GITLAB_TRIGGER_URL,
             data={
-                "token": config.GITLAB_PIPELINE_TRIGGER_TOKEN,
+                "token": self.config.GITLAB_PIPELINE_TRIGGER_TOKEN,
                 "ref": "main",
                 "variables[BRIDGE_PAYLOAD]": payload,
                 "variables[TRIGGER_SIGNATURE]": signature,

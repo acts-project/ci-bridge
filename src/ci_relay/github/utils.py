@@ -9,7 +9,6 @@ import aiohttp
 from gidgethub.apps import get_installation_access_token
 from sanic.log import logger
 
-from ci_relay import config
 from ci_relay.gitlab import GitLab
 from ci_relay.github.models import (
     PullRequestEvent,
@@ -19,6 +18,7 @@ from ci_relay.github.models import (
 )
 from ci_relay.signature import Signature
 from ci_relay import utils
+from ci_relay.config import Config
 
 
 async def get_installed_repos(gh: GitHubAPI) -> dict[str, Any]:
@@ -35,7 +35,7 @@ async def is_in_installed_repos(gh: GitHubAPI, repo_id: int) -> bool:
     return False
 
 
-async def add_rejection_status(gh: GitHubAPI, head_sha, repo_url):
+async def add_rejection_status(gh: GitHubAPI, head_sha, repo_url, config: Config):
     payload = {
         "name": "CI Bridge",
         "status": "completed",
@@ -57,7 +57,9 @@ async def add_rejection_status(gh: GitHubAPI, head_sha, repo_url):
         await gh.post(f"{repo_url}/check-runs", data=payload)
 
 
-async def add_failure_status(gh: GitHubAPI, head_sha, repo_url, message):
+async def add_failure_status(
+    gh: GitHubAPI, head_sha, repo_url, message, config: Config
+):
     payload = {
         "name": "CI Bridge",
         "status": "completed",
@@ -88,7 +90,10 @@ async def handle_check_suite(
     session: aiohttp.ClientSession,
     event: CheckSuiteEvent,
     gitlab_client: GitLab,
+    config: Config,
 ):
+    print("GO CHECK SUITE")
+    logger.debug("Handling check suite")
     sender = event.sender.login
     org = event.organization.login
     repo_url = event.repository.url
@@ -105,7 +110,9 @@ async def handle_check_suite(
     )
     if not author_in_team:
         logger.debug("Sender is not in team, stop processing")
-        await add_rejection_status(gh, head_sha=head_sha, repo_url=repo_url)
+        await add_rejection_status(
+            gh, head_sha=head_sha, repo_url=repo_url, config=config
+        )
         return
 
     if not await is_in_installed_repos(gh, event.repository.id):
@@ -146,7 +153,7 @@ async def handle_check_suite(
     bridge_payload = pipeline_vars["BRIDGE_PAYLOAD"]
     signature = pipeline_vars["TRIGGER_SIGNATURE"]
 
-    if not Signature().verify(bridge_payload, signature):
+    if not Signature(config.TRIGGER_SECRET).verify(bridge_payload, signature):
         logger.error("Signatures do not match for pipeline behind check suite")
         raise ValueError("Signature mismatch")
 
@@ -181,6 +188,7 @@ async def handle_push(
     session: aiohttp.ClientSession,
     event: PushEvent,
     gitlab_client: GitLab,
+    config: Config,
 ):
     sender = event.sender.login
     org = event.organization.login
@@ -195,7 +203,9 @@ async def handle_push(
         logger.debug("Is user %s in team %s: %s", user, config.ALLOW_TEAM, user_in_team)
         if not user_in_team:
             logger.debug("User is not in team, stop processing")
-            await add_rejection_status(gh, head_sha=head_sha, repo_url=repo_url)
+            await add_rejection_status(
+                gh, head_sha=head_sha, repo_url=repo_url, config=config
+            )
             return
 
     if not await is_in_installed_repos(gh, event.repository.id):
@@ -228,7 +238,7 @@ async def handle_push(
 
 
 async def get_gitlab_job(
-    session: aiohttp.ClientSession, job_url: str
+    session: aiohttp.ClientSession, job_url: str, config: Config
 ) -> dict[str, Any]:
     if not job_url.startswith(config.GITLAB_API_URL):
         raise ValueError(f"Incompatible external id / job url: {job_url}")
@@ -243,11 +253,11 @@ async def get_gitlab_job(
 
 
 async def handle_rerequest(
-    gh: GitHubAPI, session: aiohttp.ClientSession, event: RerequestEvent
+    gh: GitHubAPI, session: aiohttp.ClientSession, event: RerequestEvent, config: Config
 ):
     job_url = event.check_run.external_id
     # This will raise an error if the job url is not valid
-    await get_gitlab_job(session, job_url)
+    await get_gitlab_job(session, job_url, config)
 
     sender = event.sender.login
     org = event.organization.login
@@ -282,7 +292,9 @@ async def handle_rerequest(
             logger.debug("Job retry has been posted")
 
 
-async def get_author_in_team(gh: GitHubAPI, author: str, org: str) -> bool:
+async def get_author_in_team(
+    gh: GitHubAPI, author: str, org: str, config: Config
+) -> bool:
     allow_org, allow_team = config.ALLOW_TEAM.split("/", 1)
 
     if allow_org != org:
@@ -310,6 +322,7 @@ async def handle_synchronize(
     session: aiohttp.ClientSession,
     event: PullRequestEvent,
     gitlab_client: GitLab,
+    config: Config,
 ):
     pr = event.pull_request
 
@@ -384,8 +397,8 @@ async def handle_pipeline_status(
     head_sha: str,
     project,
     gh: GitHubAPI,
-    app,
     gitlab_client: GitLab,
+    config: Config,
 ):
     status = job["status"]
 

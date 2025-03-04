@@ -1,5 +1,5 @@
 run:
-    uv run sanic ci_relay.web:create_app -d
+    dotenvx run -- uv run sanic ci_relay.web:create_app -d
 
 test:
     uv run pytest
