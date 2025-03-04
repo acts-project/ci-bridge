@@ -3,7 +3,6 @@ import json
 import textwrap
 
 from gidgethub.abc import GitHubAPI
-from gidgetlab.abc import GitLabAPI
 from gidgethub import aiohttp as gh_aiohttp
 import gidgethub
 import aiohttp
@@ -11,7 +10,7 @@ from gidgethub.apps import get_installation_access_token
 from sanic.log import logger
 
 from ci_relay import config
-from ci_relay.gitlab import utils as gitlab
+from ci_relay.gitlab import GitLab
 from ci_relay.github.models import (
     PullRequestEvent,
     CheckSuiteEvent,
@@ -88,7 +87,7 @@ async def handle_check_suite(
     gh: GitHubAPI,
     session: aiohttp.ClientSession,
     event: CheckSuiteEvent,
-    gl: GitLabAPI,
+    gitlab_client: GitLab,
 ):
     sender = event.sender.login
     org = event.organization.login
@@ -142,9 +141,7 @@ async def handle_check_suite(
     pipeline_id = job_data["pipeline"]["id"]
     project_id = job_data["pipeline"]["project_id"]
 
-    pipeline_vars = await gitlab.get_pipeline_variables(
-        project_id, pipeline_id, session
-    )
+    pipeline_vars = await gitlab_client.get_pipeline_variables(project_id, pipeline_id)
 
     bridge_payload = pipeline_vars["BRIDGE_PAYLOAD"]
     signature = pipeline_vars["TRIGGER_SIGNATURE"]
@@ -163,11 +160,11 @@ async def handle_check_suite(
     logger.debug("Clone url of previous job was: %s", clone_url)
     logger.debug("Head sha previous job was: %s", head_sha)
 
-    await gitlab.cancel_pipelines_if_redundant(
-        gl=gl, head_ref=head_ref, clone_url=clone_url
+    await gitlab_client.cancel_pipelines_if_redundant(
+        head_ref=head_ref, clone_url=clone_url
     )
 
-    await gitlab.trigger_pipeline(
+    await gitlab_client.trigger_pipeline(
         gh,
         repo_url=repo_url,
         repo_slug=repo_slug,
@@ -183,7 +180,7 @@ async def handle_push(
     gh: GitHubAPI,
     session: aiohttp.ClientSession,
     event: PushEvent,
-    gl: GitLabAPI,
+    gitlab_client: GitLab,
 ):
     sender = event.sender.login
     org = event.organization.login
@@ -214,11 +211,11 @@ async def handle_push(
 
     head_ref = event.ref.split("/")[-1]
 
-    await gitlab.cancel_pipelines_if_redundant(
-        gl=gl, head_ref=head_ref, clone_url=event.repository.clone_url
+    await gitlab_client.cancel_pipelines_if_redundant(
+        head_ref=head_ref, clone_url=event.repository.clone_url
     )
 
-    await gitlab.trigger_pipeline(
+    await gitlab_client.trigger_pipeline(
         gh,
         repo_url=repo_url,
         repo_slug=repo_slug,
@@ -312,7 +309,7 @@ async def handle_synchronize(
     gh: GitHubAPI,
     session: aiohttp.ClientSession,
     event: PullRequestEvent,
-    gl: GitLabAPI,
+    gitlab_client: GitLab,
 ):
     pr = event.pull_request
 
@@ -345,11 +342,11 @@ async def handle_synchronize(
 
         logger.debug("%s is in team", label)
 
-    await gitlab.cancel_pipelines_if_redundant(
-        gl=gl, head_ref=pr.head.ref, clone_url=pr.head.repo.clone_url
+    await gitlab_client.cancel_pipelines_if_redundant(
+        head_ref=pr.head.ref, clone_url=pr.head.repo.clone_url
     )
 
-    await gitlab.trigger_pipeline(
+    await gitlab_client.trigger_pipeline(
         gh,
         session,
         head_sha=head_sha,
@@ -381,7 +378,14 @@ async def client_for_installation(app, installation_id, session: aiohttp.ClientS
 
 
 async def handle_pipeline_status(
-    pipeline, job, repo_url: str, head_sha: str, project, gh: GitHubAPI, app
+    pipeline,
+    job,
+    repo_url: str,
+    head_sha: str,
+    project,
+    gh: GitHubAPI,
+    app,
+    gitlab_client: GitLab,
 ):
     status = job["status"]
 
@@ -413,9 +417,7 @@ async def handle_pipeline_status(
     started_at = job["started_at"]
     completed_at = job["finished_at"]
 
-    log = await gitlab.get_job_log(
-        project["id"], job["id"], session=app.ctx.aiohttp_session
-    )
+    log = await gitlab_client.get_job_log(project["id"], job["id"])
 
     github_limit = 65535 - 200  # tolerance
     logger.debug("Log length: %d (max %d)", len(log), github_limit)
@@ -472,7 +474,7 @@ async def handle_pipeline_status(
             ),
         },
         "details_url": job["web_url"],
-        "external_id": gitlab.get_job_url(project["id"], job["id"]),
+        "external_id": gitlab_client.get_job_url(project["id"], job["id"]),
     }
 
     if status == "failed" and pipeline["yaml_errors"] is not None:

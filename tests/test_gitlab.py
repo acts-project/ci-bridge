@@ -5,8 +5,8 @@ import json
 
 import ci_relay.gitlab.router as gitlab_router
 from ci_relay.gitlab.router import router
-import ci_relay.gitlab.utils as gitlab
 import ci_relay.github.utils as github
+from ci_relay.gitlab import GitLab
 
 
 @pytest.mark.asyncio
@@ -22,10 +22,12 @@ async def test_gitlab_job_hook(app, monkeypatch, aiohttp_session):
         on_job_mocked = AsyncMock()
         m.setattr(gitlab_router, "on_job_hook", on_job_mocked)
 
+        gitlab_client = GitLab(session=aiohttp_session, gl=gidgetlab_client)
+
         await router.dispatch(
             event,
+            gitlab_client=gitlab_client,
             app=app,
-            gl=gidgetlab_client,
             session=aiohttp_session,
         )
         on_job_mocked.assert_called_once()
@@ -69,9 +71,11 @@ async def test_trigger_pipeline_success(monkeypatch):
     clone_url = "https://github.com/test_org/test_repo.git"
     head_ref = "main"
 
-    await gitlab.trigger_pipeline(
+    gidgetlab_client = AsyncMock()
+    gitlab_client = GitLab(session=session, gl=gidgetlab_client)
+
+    await gitlab_client.trigger_pipeline(
         gidgethub_client,
-        session,
         head_sha=head_sha,
         repo_url=repo_url,
         repo_slug=repo_slug,
@@ -144,9 +148,11 @@ async def test_trigger_pipeline_failure(monkeypatch):
     clone_url = "https://github.com/test_org/test_repo.git"
     head_ref = "main"
 
-    await gitlab.trigger_pipeline(
+    gidgetlab_client = AsyncMock()
+    gitlab_client = GitLab(session=session, gl=gidgetlab_client)
+
+    await gitlab_client.trigger_pipeline(
         gidgethub_client,
-        session,
         head_sha=head_sha,
         repo_url=repo_url,
         repo_slug=repo_slug,
@@ -194,10 +200,12 @@ async def test_trigger_pipeline_sterile_mode(monkeypatch):
     head_ref = "main"
 
     gidgethub_client = AsyncMock()
+    gidgetlab_client = AsyncMock()
 
-    await gitlab.trigger_pipeline(
+    gitlab_client = GitLab(session=session, gl=gidgetlab_client)
+
+    await gitlab_client.trigger_pipeline(
         gidgethub_client,
-        session,
         head_sha=head_sha,
         repo_url=repo_url,
         repo_slug=repo_slug,
@@ -254,7 +262,10 @@ def test_gitlab_webhook_success(app, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_on_job_hook(app, monkeypatch):
-    # Create test data
+    # Mock config
+    monkeypatch.setattr("ci_relay.config.STERILE", False)
+
+    # Create test event
     event = sansio.Event(
         event="Job Hook",
         data={
@@ -281,21 +292,29 @@ async def test_on_job_hook(app, monkeypatch):
     mock_project = {"id": 456, "path_with_namespace": "test/org"}
     mock_job = {"id": 123, "name": "test_job"}
 
+    gidgetlab_client = AsyncMock()
+    session = AsyncMock()
+    gitlab_client = GitLab(session=session, gl=gidgetlab_client)
+
     # Mock the gather results
     monkeypatch.setattr(
-        "ci_relay.gitlab.utils.get_pipeline",
+        gitlab_client,
+        "get_pipeline",
         AsyncMock(return_value=mock_pipeline),
     )
     monkeypatch.setattr(
-        "ci_relay.gitlab.utils.get_pipeline_variables",
+        gitlab_client,
+        "get_pipeline_variables",
         AsyncMock(return_value=mock_variables),
     )
     monkeypatch.setattr(
-        "ci_relay.gitlab.utils.get_project",
+        gitlab_client,
+        "get_project",
         AsyncMock(return_value=mock_project),
     )
     monkeypatch.setattr(
-        "ci_relay.gitlab.utils.get_job",
+        gitlab_client,
+        "get_job",
         AsyncMock(return_value=mock_job),
     )
 
@@ -320,13 +339,10 @@ async def test_on_job_hook(app, monkeypatch):
         Mock(return_value=True),
     )
 
-    # Create GitLab client
-    gl = AsyncMock()
-
     session = AsyncMock()
 
     # Call the function
-    await gitlab_router.on_job_hook(event, gl, app, session)
+    await gitlab_router.on_job_hook(event, gitlab_client, app, session)
 
     # Verify client_for_installation was called with correct installation ID
     github.client_for_installation.assert_called_once_with(app, 12345, session)

@@ -2,19 +2,18 @@ import json
 
 import aiohttp
 from gidgetlab.routing import Router
-from gidgetlab.abc import GitLabAPI
 from gidgetlab.sansio import Event
 from sanic import Sanic
 from sanic.log import logger
 import asyncio
 
-import ci_relay.gitlab.utils as utils
 import ci_relay.github.utils as github
+from ci_relay.gitlab import GitLab
 from ci_relay.signature import Signature
 
 
 async def on_job_hook(
-    event: Event, gl: GitLabAPI, app: Sanic, session: aiohttp.ClientSession
+    event: Event, gitlab_client: GitLab, app: Sanic, session: aiohttp.ClientSession
 ):
     if event.data["object_kind"] != "build":
         raise ValueError("Object is not a build")
@@ -23,10 +22,10 @@ async def on_job_hook(
     pipeline_id = event.data["pipeline_id"]
 
     pipeline, variables, project, job = await asyncio.gather(
-        utils.get_pipeline(project_id, pipeline_id, session),
-        utils.get_pipeline_variables(project_id, pipeline_id, session),
-        utils.get_project(project_id, session),
-        utils.get_job(project_id, event.data["build_id"], session),
+        gitlab_client.get_pipeline(project_id, pipeline_id),
+        gitlab_client.get_pipeline_variables(project_id, pipeline_id),
+        gitlab_client.get_project(project_id),
+        gitlab_client.get_job(project_id, event.data["build_id"]),
     )
 
     bridge_payload = variables["BRIDGE_PAYLOAD"]
@@ -64,7 +63,7 @@ router = Router()
 async def _on_pipeline_hook(
     event: Event,
     session: aiohttp.ClientSession,
-    gl: GitLabAPI,
+    gitlab_client: GitLab,
     app: Sanic,
 ):
     logger.debug("Received pipeline hook")
@@ -74,7 +73,7 @@ async def _on_pipeline_hook(
 async def _on_job_hook(
     event: Event,
     session: aiohttp.ClientSession,
-    gl: GitLabAPI,
+    gitlab_client: GitLab,
     app: Sanic,
 ):
-    await on_job_hook(event, gl=gl, app=app, session=session)
+    await on_job_hook(event, gitlab_client=gitlab_client, app=app, session=session)
