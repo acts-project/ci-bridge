@@ -555,7 +555,9 @@ async def test_handle_push_success(session, monkeypatch, config):
     gitlab_client = GitLab(session=session, gl=gidgetlab_client, config=config)
 
     with monkeypatch.context() as m:
-        m.setattr(github, "get_author_in_team", AsyncMock(return_value=True))
+        get_author_in_team_mock = create_autospec(github.get_author_in_team)
+        get_author_in_team_mock.return_value = True
+        m.setattr(github, "get_author_in_team", get_author_in_team_mock)
         m.setattr(github, "is_in_installed_repos", AsyncMock(return_value=True))
         m.setattr(gitlab_client, "cancel_pipelines_if_redundant", AsyncMock())
         m.setattr(gitlab_client, "trigger_pipeline", AsyncMock())
@@ -637,9 +639,17 @@ async def test_handle_rerequest_success(session, monkeypatch, config):
     gidgethub_client = AsyncMock()
 
     with monkeypatch.context() as m:
-        m.setattr(github, "get_author_in_team", AsyncMock(return_value=True))
-        m.setattr(github, "is_in_installed_repos", AsyncMock(return_value=True))
-        m.setattr(github, "get_gitlab_job", AsyncMock(return_value={"id": 789}))
+        get_author_in_team_mock = create_autospec(github.get_author_in_team)
+        get_author_in_team_mock.return_value = True
+        m.setattr(github, "get_author_in_team", get_author_in_team_mock)
+
+        is_in_installed_repos_mock = create_autospec(github.is_in_installed_repos)
+        is_in_installed_repos_mock.return_value = True
+        m.setattr(github, "is_in_installed_repos", is_in_installed_repos_mock)
+
+        get_gitlab_job_mock = create_autospec(github.get_gitlab_job)
+        get_gitlab_job_mock.return_value = {"id": 789}
+        m.setattr(github, "get_gitlab_job", get_gitlab_job_mock)
         m.setattr(session, "post", mock_post)
 
         await github.handle_rerequest(gidgethub_client, session, event, config)
@@ -668,9 +678,17 @@ async def test_handle_rerequest_user_not_in_team(session, monkeypatch, config):
     gidgethub_client = AsyncMock()
 
     with monkeypatch.context() as m:
-        m.setattr(github, "get_author_in_team", AsyncMock(return_value=False))
-        m.setattr(github, "is_in_installed_repos", AsyncMock(return_value=True))
-        m.setattr(github, "get_gitlab_job", AsyncMock(return_value={"id": 789}))
+        get_author_in_team_mock = create_autospec(github.get_author_in_team)
+        get_author_in_team_mock.return_value = False
+        m.setattr(github, "get_author_in_team", get_author_in_team_mock)
+
+        is_in_installed_repos_mock = create_autospec(github.is_in_installed_repos)
+        is_in_installed_repos_mock.return_value = True
+        m.setattr(github, "is_in_installed_repos", is_in_installed_repos_mock)
+
+        get_gitlab_job_mock = create_autospec(github.get_gitlab_job)
+        get_gitlab_job_mock.return_value = {"id": 789}
+        m.setattr(github, "get_gitlab_job", get_gitlab_job_mock)
         m.setattr(session, "post", AsyncMock())
 
         await github.handle_rerequest(gidgethub_client, session, event, config)
@@ -693,8 +711,14 @@ async def test_handle_rerequest_incompatible_url(session, monkeypatch, config):
     gidgethub_client = AsyncMock()
 
     with monkeypatch.context() as m:
-        m.setattr(github, "get_author_in_team", AsyncMock(return_value=True))
-        m.setattr(github, "is_in_installed_repos", AsyncMock(return_value=True))
+        get_author_in_team_mock = create_autospec(github.get_author_in_team)
+        get_author_in_team_mock.return_value = True
+        m.setattr(github, "get_author_in_team", get_author_in_team_mock)
+
+        is_in_installed_repos_mock = create_autospec(github.is_in_installed_repos)
+        is_in_installed_repos_mock.return_value = True
+        m.setattr(github, "is_in_installed_repos", is_in_installed_repos_mock)
+
         m.setattr(
             github,
             "get_gitlab_job",
