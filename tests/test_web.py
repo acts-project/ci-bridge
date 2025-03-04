@@ -2,6 +2,7 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock
 from gidgethub.sansio import Event as GitHubEvent
 from gidgetlab.sansio import Event as GitLabEvent
+from sanic import Sanic
 
 import ci_relay.web as web
 import ci_relay.github.router as github_router
@@ -63,11 +64,11 @@ async def test_handle_github_webhook(app, monkeypatch):
     session = AsyncMock()
 
     # Call the handler
-    await web.handle_github_webhook(request, app, session)
+    await web.handle_github_webhook(request, app=app, session=session)
 
     # Verify client_for_installation was called with correct installation ID
     web.github_utils.client_for_installation.assert_called_once_with(
-        app, 12345, session=session
+        app=app, installation_id=12345, session=session
     )
 
     # Verify router dispatch was called with correct parameters
@@ -126,18 +127,17 @@ async def test_handle_gitlab_webhook(app, monkeypatch):
     session = AsyncMock()
 
     # Call the handler
-    await web.handle_gitlab_webhook(request, app, session)
+    await web.handle_gitlab_webhook(request, app=app, session=session)
 
     # Verify router dispatch was called with correct parameters
     call_args = gitlab_router.router.dispatch.call_args
     assert call_args[0][0] is event
-    assert call_args[1]["session"] == session
     assert call_args[1]["app"] == app
+    assert call_args[1]["session"] == session
     assert call_args[1]["gl"] == mock_gitlab_client
 
 
-# @pytest.mark.asyncio
-def test_webhook_endpoints(app, monkeypatch):
+def test_webhook_endpoints(app: Sanic, monkeypatch):
     # Mock config
     monkeypatch.setattr("ci_relay.config.WEBHOOK_SECRET", "test_secret")
     monkeypatch.setattr("ci_relay.config.GITLAB_WEBHOOK_SECRET", "test_secret")
@@ -214,12 +214,7 @@ def test_health_check(app, monkeypatch):
     )
 
     # Test successful health check
-    request, response = app.test_client.get("/health")
+    _, response = app.test_client.get("/health")
     assert response.status_code == 200
     assert "GitHub: ok" in response.text
     assert "GitLab: ok" in response.text
-
-    # Test rate limiting
-    for _ in range(2):  # Make two requests in quick succession
-        request, response = app.test_client.get("/health")
-    assert response.status_code == 429

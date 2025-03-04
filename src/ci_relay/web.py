@@ -8,6 +8,8 @@ import gidgetlab.aiohttp
 from sanic.log import logger
 import cachetools
 from aiolimiter import AsyncLimiter
+import contextlib
+import functools
 
 from ci_relay import config
 from ci_relay.github.router import router as github_router
@@ -15,7 +17,25 @@ from ci_relay.gitlab.router import router as gitlab_router
 import ci_relay.github.utils as github_utils
 
 
-async def handle_gitlab_webhook(request, app: Sanic, session: aiohttp.ClientSession):
+def with_session(func):
+    @functools.wraps(func)
+    async def wrapper(
+        *args, app: Sanic, session: aiohttp.ClientSession | None = None, **kwargs
+    ):
+        async with contextlib.AsyncExitStack() as stack:
+            if session is None:
+                session = await stack.enter_async_context(
+                    aiohttp.ClientSession(loop=app.loop)
+                )
+            print("args", *args)
+            print("kwargs", **kwargs)
+            return await func(*args, app=app, session=session, **kwargs)
+
+    return wrapper
+
+
+@with_session
+async def handle_gitlab_webhook(request, *, app: Sanic, session: aiohttp.ClientSession):
     event = GitLabEvent.from_http(
         request.headers, request.body, secret=config.GITLAB_WEBHOOK_SECRET
     )
@@ -31,7 +51,8 @@ async def handle_gitlab_webhook(request, app: Sanic, session: aiohttp.ClientSess
     await gitlab_router.dispatch(event, session=session, app=app, gl=gl)
 
 
-async def handle_github_webhook(request, app: Sanic, session: aiohttp.ClientSession):
+@with_session
+async def handle_github_webhook(request, *, app: Sanic, session: aiohttp.ClientSession):
     event = GitHubEvent.from_http(
         request.headers, request.body, secret=app.config.WEBHOOK_SECRET
     )
@@ -41,7 +62,7 @@ async def handle_github_webhook(request, app: Sanic, session: aiohttp.ClientSess
     logger.debug("Installation id: %s", installation_id)
 
     gh = await github_utils.client_for_installation(
-        app, installation_id, session=session
+        app=app, installation_id=installation_id, session=session
     )
 
     gl = gidgetlab.aiohttp.GitLabAPI(
@@ -134,7 +155,7 @@ def create_app():
     async def github(request):
         logger.debug("Webhook received on github endpoint")
 
-        app.add_task(handle_github_webhook(request, app, app.ctx.aiohttp_session))
+        app.add_task(handle_github_webhook(request, app))
 
         return response.empty(200)
 
@@ -142,7 +163,7 @@ def create_app():
     async def gitlab(request):
         logger.debug("Webhook received on gitlab endpoint")
 
-        app.add_task(handle_gitlab_webhook(request, app, app.ctx.aiohttp_session))
+        app.add_task(handle_gitlab_webhook(request, app))
 
         return response.empty(200)
 
@@ -151,9 +172,9 @@ def create_app():
         logger.debug("Webhook received on compatibility endpoint")
 
         if "X-Gitlab-Event" in request.headers:
-            app.add_task(handle_gitlab_webhook(request, app, app.ctx.aiohttp_session))
+            app.add_task(handle_gitlab_webhook(request, app))
         elif "X-GitHub-Event" in request.headers:
-            app.add_task(handle_github_webhook(request, app, app.ctx.aiohttp_session))
+            app.add_task(handle_github_webhook(request, app))
 
         return response.empty(200)
 

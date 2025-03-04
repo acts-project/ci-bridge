@@ -19,6 +19,7 @@ from ci_relay.github.models import (
     RerequestEvent,
 )
 from ci_relay.signature import Signature
+from ci_relay import utils
 
 
 async def get_installed_repos(gh: GitHubAPI) -> dict[str, Any]:
@@ -360,25 +361,6 @@ async def handle_synchronize(
     )
 
 
-def gitlab_to_github_status(gitlab_status: str) -> str:
-    if gitlab_status in (
-        "created",
-        "waiting_for_resource",
-        "preparing",
-        "pending",
-        "manual",
-        "scheduled",
-    ):
-        check_status = "queued"
-    elif gitlab_status in ("running",):
-        check_status = "in_progress"
-    elif gitlab_status in ("success", "failed", "canceled", "skipped"):
-        check_status = "completed"
-    else:
-        raise ValueError(f"Unknown status {gitlab_status}")
-    return check_status
-
-
 async def client_for_installation(app, installation_id, session: aiohttp.ClientSession):
     gh_pre = gh_aiohttp.GitHubAPI(session, __name__)
     access_token_response = await get_installation_access_token(
@@ -405,7 +387,7 @@ async def handle_pipeline_status(
 
     logger.debug("Job %d is reported as '%s'", pipeline["id"], status)
 
-    check_status = gitlab_to_github_status(status)
+    check_status = utils.gitlab_to_github_status(status)
 
     logger.debug("Status: %s => %s", status, check_status)
 

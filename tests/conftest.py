@@ -1,17 +1,20 @@
 import pytest
 import aiohttp
 from sanic import Sanic
-from ci_relay.web import create_app
 import pytest_asyncio
 from sanic_testing import TestManager
 
 
-@pytest.fixture(scope="session")
-def app() -> Sanic:
+@pytest.fixture(scope="function")
+def app(monkeypatch) -> Sanic:
     """Create a Sanic app for testing."""
+    monkeypatch.setenv("APP_ID", "123")
+    from ci_relay.web import create_app
+
     app = create_app()
     TestManager(app)
-    return app
+    yield app
+    app.stop()
 
 
 @pytest_asyncio.fixture
