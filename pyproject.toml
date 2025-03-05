@@ -2,9 +2,9 @@
 name = "ci-relay"
 version = "0.1.0"
 description = ""
-authors = [{name="Paul Gessinger", email="hello@paulgessinger.com"}]
+authors = [{ name = "Paul Gessinger", email = "hello@paulgessinger.com" }]
 
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = [
     "aiohttp>=3.11.11",
     "aiolimiter>=1.2.1",
@@ -21,7 +21,7 @@ dependencies = [
 ]
 
 [tool.pyright]
-exclude = [ ".venv" ]
+exclude = [".venv"]
 venvPath = "."
 venv = ".venv"
 
@@ -33,6 +33,7 @@ dev-dependencies = [
     "pytest-sanic>=1.9.1",
     "sanic-testing>=24.6.0",
     "pytest-aiohttp>=1.1.0",
+    "nox>=2025.2.9",
 ]
 
 [build-system]
