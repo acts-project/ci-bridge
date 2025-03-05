@@ -123,7 +123,7 @@ async def test_handle_comment_success(session, monkeypatch, config):
         # Verify reaction was created
         gidgethub_client.post.assert_called_once_with(
             event.comment.reactions.url,
-            data=ReactionCreateRequest(content=ReactionType.rocket),
+            data=ReactionCreateRequest(content=ReactionType.rocket).model_dump(),
         )
 
 
