@@ -596,5 +596,5 @@ async def handle_rerun_comment(
     # create a reaction to the comment
     await gh.post(
         event.comment.reactions.url,
-        data=ReactionCreateRequest(content=ReactionType.rocket),
+        data=ReactionCreateRequest(content=ReactionType.rocket).model_dump(),
     )
