@@ -10,6 +10,11 @@ from ci_relay.github.models import (
     Installation,
     PushEvent,
     PullRequestEvent,
+    IssueCommentEvent,
+    PullRequest,
+    PullRequestHead,
+    PullRequestBase,
+    User,
 )
 
 
@@ -82,3 +87,74 @@ def test_pull_request_event_model():
     assert event.organization.login == "test-org"
     assert event.sender.login == "test-user"
     assert event.installation.id == 12345
+
+
+def test_issue_comment_event_model():
+    data = load_sample_data("issue_comment_created_issue.json")
+    event = IssueCommentEvent(**data)
+
+    assert event.action == "created"
+    assert event.comment.body == "test comment"
+    assert event.comment.user.login == "test_user"
+    assert event.issue.number == 123
+    assert event.issue.pull_request is None
+    assert event.repository.full_name == "test_org/test_repo"
+    assert event.organization.login == "test_org"
+    assert event.sender.login == "test_user"
+    assert event.installation.id == 12345
+
+
+def test_issue_comment_event_model_pr():
+    data = load_sample_data("issue_comment_created_pr.json")
+    event = IssueCommentEvent(**data)
+
+    assert event.action == "created"
+    assert event.comment.body == "/rerun"
+    assert event.comment.user.login == "test_user"
+    assert event.issue.number == 123
+    assert event.issue.pull_request is not None
+    assert (
+        event.issue.pull_request.url
+        == "https://api.github.com/repos/test_org/test_repo/pulls/123"
+    )
+
+
+def test_pr_api_response_model():
+    data = load_sample_data("pr_api_response.json")
+    pr = PullRequest(**data)
+
+    print(pr)
+    assert pr.number == 123
+    assert pr.user == User(
+        login="test_user",
+        id=12345,
+    )
+    assert pr.draft is False
+    assert pr.head == PullRequestHead(
+        ref="test-branch",
+        sha="abc123",
+        repo=Repository(
+            id=123456,
+            full_name="test_user/test_repo",
+            url="https://api.github.com/repos/test_user/test_repo",
+            clone_url="https://github.com/test_user/test_repo.git",
+        ),
+        user=User(
+            login="test_user",
+            id=12345,
+        ),
+    )
+    assert pr.base == PullRequestBase(
+        ref="main",
+        sha="abc123",
+        repo=Repository(
+            id=123456,
+            full_name="test_org/test_repo",
+            url="https://api.github.com/repos/test_org/test_repo",
+            clone_url="https://github.com/test_org/test_repo.git",
+        ),
+        user=User(
+            login="test_user",
+            id=12345,
+        ),
+    )

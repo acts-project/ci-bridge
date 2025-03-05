@@ -15,6 +15,8 @@ from ci_relay.github.models import (
     CheckSuiteEvent,
     PushEvent,
     RerequestEvent,
+    IssueCommentEvent,
+    PullRequest,
 )
 from ci_relay.signature import Signature
 from ci_relay import utils
@@ -512,3 +514,79 @@ async def handle_pipeline_status(
 
     if not config.STERILE:
         await gh.post(f"{repo_url}/check-runs", data=payload)
+
+
+async def handle_comment(
+    gh: GitHubAPI,
+    session: aiohttp.ClientSession,
+    event: IssueCommentEvent,
+    gitlab_client: GitLab,
+    config: Config,
+):
+    """Handle pull request comment events"""
+    logger.debug("Handling comment event")
+    if event.action != "created":
+        logger.debug("Ignoring comment action: %s", event.action)
+        return
+
+    # Check if comment is on a PR (GitHub sends PR comments as issue_comment events)
+    if event.issue.pull_request is None:
+        logger.debug("Comment is not on a PR, ignoring")
+        return
+
+    # Check if commenter is in allowed team
+    commenter = event.comment.user.login
+    org = event.organization.login
+    commenter_in_team = await get_author_in_team(gh, commenter, org, config)
+
+    logger.debug(
+        "Is commenter %s in team %s: %s",
+        commenter,
+        config.ALLOW_TEAM,
+        commenter_in_team,
+    )
+
+    if not commenter_in_team:
+        logger.debug("Commenter is not in team, stop processing")
+        return
+
+    # Check if repository is installed
+    if not await is_in_installed_repos(gh, event.repository.id):
+        logger.debug(
+            "Repository %s is not among installed repositories",
+            event.repository.full_name,
+        )
+        return
+
+    # Parse comment for commands
+    comment_body = event.comment.body.strip().lower()
+    if comment_body == "/rerun":
+        logger.debug("Comment is a rerun command, handling")
+        await handle_rerun_comment(gh, event, gitlab_client)
+
+
+async def handle_rerun_comment(
+    gh: GitHubAPI,
+    event: IssueCommentEvent,
+    gitlab_client: GitLab,
+):
+    # Get pull-request details from GitHub
+    pr_resp = await gh.getitem(event.issue.pull_request.url)
+    pr = PullRequest(**pr_resp)
+    logger.debug("PR is: %s", pr.number)
+
+    # Trigger pipeline rerun
+    await gitlab_client.cancel_pipelines_if_redundant(
+        head_ref=pr.head.ref,
+        clone_url=pr.head.repo.clone_url,
+    )
+
+    await gitlab_client.trigger_pipeline(
+        gh,
+        head_sha=pr.head.sha,
+        repo_url=event.repository.url,
+        repo_slug=make_repo_slug(event.repository.full_name),
+        clone_url=pr.head.repo.clone_url,
+        installation_id=event.installation.id,
+        head_ref=pr.head.ref,
+    )

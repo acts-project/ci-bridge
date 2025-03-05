@@ -11,12 +11,14 @@ from ci_relay.github.utils import (
     handle_rerequest,
     handle_check_suite,
     handle_push,
+    handle_comment,
 )
 from ci_relay.github.models import (
     PullRequestEvent,
     CheckRunEvent,
     CheckSuiteEvent,
     PushEvent,
+    IssueCommentEvent,
 )
 from ci_relay.gitlab import GitLab
 
@@ -94,3 +96,21 @@ async def on_push(
     data = PushEvent(**event.data)
     gitlab_client = GitLab(session=session, gl=gl, config=app.config)
     await handle_push(gh, session, data, gitlab_client=gitlab_client, config=app.config)
+
+
+@router.register("issue_comment")
+async def on_comment(
+    event: Event,
+    session: aiohttp.ClientSession,
+    gh: GitHubAPI,
+    app: Sanic,
+    gl: GitLabAPI,
+):
+    data = IssueCommentEvent(**event.data)
+    logger.debug("Received issue_comment event")
+    logger.debug("Action: %s", data.action)
+
+    gitlab_client = GitLab(session=session, gl=gl, config=app.config)
+    await handle_comment(
+        gh, session, data, gitlab_client=gitlab_client, config=app.config
+    )

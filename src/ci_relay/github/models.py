@@ -20,6 +20,8 @@ class PullRequestHead(BaseModel):
 
 
 class PullRequestBase(BaseModel):
+    ref: str
+    sha: str
     repo: Repository
 
 
@@ -103,3 +105,28 @@ class CheckRunEvent(BaseModel):
     check_run: CheckRun
     repository: Repository
     installation: Installation
+
+
+class Comment(BaseModel):
+    id: int
+    body: str
+    user: User
+
+
+class IssuePullRequest(BaseModel):
+    url: str
+
+
+class Issue(BaseModel):
+    number: int
+    pull_request: IssuePullRequest | None = None
+
+
+class IssueCommentEvent(BaseModel):
+    action: str
+    comment: Comment
+    issue: Issue
+    organization: Organization
+    installation: Installation
+    sender: Sender
+    repository: Repository
