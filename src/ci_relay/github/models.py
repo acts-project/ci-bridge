@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from enum import Enum
+from enum import StrEnum
 
 
 class User(BaseModel):
@@ -119,7 +119,7 @@ class Comment(BaseModel):
     reactions: Reactions
 
 
-class ReactionType(str, Enum):
+class ReactionType(StrEnum):
     thumbsup = "+1"
     thumbsdown = "-1"
     laugh = "laugh"

@@ -1,5 +1,8 @@
 import json
 import os
+
+import pytest
+
 from ci_relay.github.models import (
     CheckSuiteEvent,
     CheckSuite,
@@ -15,6 +18,8 @@ from ci_relay.github.models import (
     PullRequestHead,
     PullRequestBase,
     User,
+    ReactionCreateRequest,
+    ReactionType,
 )
 
 
@@ -166,3 +171,11 @@ def test_pr_api_response_model():
             id=12345,
         ),
     )
+
+
+@pytest.mark.parametrize("reaction_type", ReactionType)
+def test_reaction_create_request_model(reaction_type):
+    reaction = ReactionCreateRequest(content=reaction_type)
+    json = reaction.model_dump_json()
+
+    assert json == f'{{"content":"{reaction_type}"}}'
