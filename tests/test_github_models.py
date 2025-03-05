@@ -96,6 +96,10 @@ def test_issue_comment_event_model():
     assert event.action == "created"
     assert event.comment.body == "test comment"
     assert event.comment.user.login == "test_user"
+    assert (
+        event.comment.reactions.url
+        == "https://api.github.com/repos/test_org/test_repo/issues/comments/123456/reactions"
+    )
     assert event.issue.number == 123
     assert event.issue.pull_request is None
     assert event.repository.full_name == "test_org/test_repo"
@@ -111,6 +115,10 @@ def test_issue_comment_event_model_pr():
     assert event.action == "created"
     assert event.comment.body == "/rerun"
     assert event.comment.user.login == "test_user"
+    assert (
+        event.comment.reactions.url
+        == "https://api.github.com/repos/test_org/test_repo/issues/comments/123456/reactions"
+    )
     assert event.issue.number == 123
     assert event.issue.pull_request is not None
     assert (

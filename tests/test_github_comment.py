@@ -14,6 +14,9 @@ from ci_relay.github.models import (
     PullRequest,
     PullRequestHead,
     PullRequestBase,
+    Reactions,
+    ReactionCreateRequest,
+    ReactionType,
 )
 
 from ci_relay.gitlab import GitLab
@@ -38,6 +41,9 @@ async def test_handle_comment_success(session, monkeypatch, config):
             id=123,
             body="/rerun",
             user=User(login="test_user"),
+            reactions=Reactions(
+                url="https://api.github.com/repos/test_org/test_repo/issues/comments/123456/reactions",
+            ),
         ),
         issue=Issue(
             number=123,
@@ -114,6 +120,12 @@ async def test_handle_comment_success(session, monkeypatch, config):
             head_ref="test-branch",
         )
 
+        # Verify reaction was created
+        gidgethub_client.post.assert_called_once_with(
+            event.comment.reactions.url,
+            data=ReactionCreateRequest(content=ReactionType.rocket),
+        )
+
 
 @pytest.mark.asyncio
 async def test_handle_comment_wrong_action(session, monkeypatch, config):
@@ -124,6 +136,9 @@ async def test_handle_comment_wrong_action(session, monkeypatch, config):
             id=123,
             body="/rerun",
             user=User(login="test_user"),
+            reactions=Reactions(
+                url="https://api.github.com/repos/test_org/test_repo/issues/comments/123456/reactions",
+            ),
         ),
         issue=Issue(
             number=123,
@@ -164,6 +179,8 @@ async def test_handle_comment_wrong_action(session, monkeypatch, config):
         # Verify no team check or pipeline trigger was attempted
         github.get_author_in_team.assert_not_called()
         gitlab_client.trigger_pipeline.assert_not_called()
+        # Verify no reaction was created
+        gidgethub_client.post.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -174,6 +191,9 @@ async def test_handle_comment_user_not_in_team(session, monkeypatch, config):
             id=123,
             body="/rerun",
             user=User(login="test_user"),
+            reactions=Reactions(
+                url="https://api.github.com/repos/test_org/test_repo/issues/comments/123456/reactions",
+            ),
         ),
         issue=Issue(
             number=123,
@@ -213,6 +233,8 @@ async def test_handle_comment_user_not_in_team(session, monkeypatch, config):
 
         # Verify no pipeline was triggered
         gitlab_client.trigger_pipeline.assert_not_called()
+        # Verify no reaction was created
+        gidgethub_client.post.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -224,6 +246,9 @@ async def test_handle_comment_not_pr(session, monkeypatch, config):
             id=123,
             body="/rerun",
             user=User(login="test_user"),
+            reactions=Reactions(
+                url="https://api.github.com/repos/test_org/test_repo/issues/comments/123456/reactions",
+            ),
         ),
         issue=Issue(number=123),  # Regular issue, not a PR
         organization=Organization(login="test_org"),
@@ -259,6 +284,8 @@ async def test_handle_comment_not_pr(session, monkeypatch, config):
         # Verify no team check or pipeline trigger was attempted
         github.get_author_in_team.assert_not_called()
         gitlab_client.trigger_pipeline.assert_not_called()
+        # Verify no reaction was created
+        gidgethub_client.post.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -269,6 +296,9 @@ async def test_handle_comment_wrong_command(session, monkeypatch, config):
             id=123,
             body="/invalid-command",  # Invalid command
             user=User(login="test_user"),
+            reactions=Reactions(
+                url="https://api.github.com/repos/test_org/test_repo/issues/comments/123456/reactions",
+            ),
         ),
         issue=Issue(
             number=123,
@@ -308,3 +338,5 @@ async def test_handle_comment_wrong_command(session, monkeypatch, config):
 
         # Verify no pipeline was triggered for invalid command
         gitlab_client.trigger_pipeline.assert_not_called()
+        # Verify no reaction was created
+        gidgethub_client.post.assert_not_called()

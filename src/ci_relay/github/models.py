@@ -1,4 +1,5 @@
 from pydantic import BaseModel
+from enum import Enum
 
 
 class User(BaseModel):
@@ -107,10 +108,30 @@ class CheckRunEvent(BaseModel):
     installation: Installation
 
 
+class Reactions(BaseModel):
+    url: str
+
+
 class Comment(BaseModel):
     id: int
     body: str
     user: User
+    reactions: Reactions
+
+
+class ReactionType(str, Enum):
+    thumbsup = "+1"
+    thumbsdown = "-1"
+    laugh = "laugh"
+    confused = "confused"
+    heart = "heart"
+    hooray = "hooray"
+    rocket = "rocket"
+    eyes = "eyes"
+
+
+class ReactionCreateRequest(BaseModel):
+    content: ReactionType
 
 
 class IssuePullRequest(BaseModel):

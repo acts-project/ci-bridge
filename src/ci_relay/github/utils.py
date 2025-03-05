@@ -17,6 +17,8 @@ from ci_relay.github.models import (
     RerequestEvent,
     IssueCommentEvent,
     PullRequest,
+    ReactionCreateRequest,
+    ReactionType,
 )
 from ci_relay.signature import Signature
 from ci_relay import utils
@@ -589,4 +591,10 @@ async def handle_rerun_comment(
         clone_url=pr.head.repo.clone_url,
         installation_id=event.installation.id,
         head_ref=pr.head.ref,
+    )
+
+    # create a reaction to the comment
+    await gh.post(
+        event.comment.reactions.url,
+        data=ReactionCreateRequest(content=ReactionType.rocket),
     )
