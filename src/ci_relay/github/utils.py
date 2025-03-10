@@ -291,7 +291,7 @@ async def handle_rerequest(
             f"{job_url}/retry",
             headers={"private-token": config.GITLAB_ACCESS_TOKEN},
         ) as resp:
-            await resp.raise_for_status()
+            resp.raise_for_status()
             logger.debug("Job retry has been posted")
 
 

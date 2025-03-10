@@ -649,7 +649,7 @@ async def test_handle_rerequest_success(session, monkeypatch, config):
 
     # Create a mock response for the post call
     mock_response = AsyncMock()
-    mock_response.raise_for_status = AsyncMock()
+    mock_response.raise_for_status = Mock()
 
     # Create a mock context manager for the post call
     @asynccontextmanager
