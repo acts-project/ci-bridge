@@ -18,7 +18,7 @@ from ci_relay.github.models import (
     Installation,
     PushEvent,
     Pusher,
-    RerequestEvent,
+    CheckRunEvent,
     CheckRun,
     User,
     PullRequestHead,
@@ -638,7 +638,8 @@ async def test_handle_rerequest_success(session, monkeypatch, config):
     monkeypatch.setattr(config, "GITLAB_ACCESS_TOKEN", "test_token")
 
     # Create test data using the model
-    event = RerequestEvent(
+    event = CheckRunEvent(
+        action="rerequested",
         sender=Sender(login="test_user"),
         organization=Organization(login="test_org"),
         repository=test_repository,
@@ -689,7 +690,8 @@ async def test_handle_rerequest_user_not_in_team(session, monkeypatch, config):
     monkeypatch.setattr(config, "GITLAB_ACCESS_TOKEN", "test_token")
 
     # Create test data using the model
-    event = RerequestEvent(
+    event = CheckRunEvent(
+        action="rerequested",
         sender=Sender(login="test_user"),
         organization=Organization(login="test_org"),
         repository=test_repository,
@@ -722,7 +724,8 @@ async def test_handle_rerequest_user_not_in_team(session, monkeypatch, config):
 @pytest.mark.asyncio
 async def test_handle_rerequest_incompatible_url(session, monkeypatch, config):
     # Create test data using the model
-    event = RerequestEvent(
+    event = CheckRunEvent(
+        action="rerequested",
         sender=Sender(login="test_user"),
         organization=Organization(login="test_org"),
         repository=test_repository,

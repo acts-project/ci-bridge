@@ -54,14 +54,6 @@ class CheckRun(BaseModel):
     external_id: str
 
 
-class RerequestEvent(BaseModel):
-    sender: Sender
-    organization: Organization
-    repository: Repository
-    check_run: CheckRun
-    installation: Installation
-
-
 class PushEvent(BaseModel):
     sender: Sender
     organization: Organization
@@ -103,6 +95,8 @@ class PullRequestEvent(BaseModel):
 
 class CheckRunEvent(BaseModel):
     action: str
+    sender: Sender
+    organization: Organization
     check_run: CheckRun
     repository: Repository
     installation: Installation

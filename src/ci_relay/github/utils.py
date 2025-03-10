@@ -14,11 +14,11 @@ from ci_relay.github.models import (
     PullRequestEvent,
     CheckSuiteEvent,
     PushEvent,
-    RerequestEvent,
     IssueCommentEvent,
     PullRequest,
     ReactionCreateRequest,
     ReactionType,
+    CheckRunEvent,
 )
 from ci_relay.signature import Signature
 from ci_relay import utils
@@ -256,7 +256,7 @@ async def get_gitlab_job(
 
 
 async def handle_rerequest(
-    gh: GitHubAPI, session: aiohttp.ClientSession, event: RerequestEvent, config: Config
+    gh: GitHubAPI, session: aiohttp.ClientSession, event: CheckRunEvent, config: Config
 ):
     job_url = event.check_run.external_id
     # This will raise an error if the job url is not valid
