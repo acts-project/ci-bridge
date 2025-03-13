@@ -189,7 +189,6 @@ async def handle_check_suite(
 
 async def handle_push(
     gh: GitHubAPI,
-    session: aiohttp.ClientSession,
     event: PushEvent,
     gitlab_client: GitLab,
     config: Config,

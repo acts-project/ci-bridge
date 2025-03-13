@@ -95,7 +95,7 @@ async def on_push(
     logger.debug("Received push event")
     data = PushEvent(**event.data)
     gitlab_client = GitLab(session=session, gl=gl, config=app.config)
-    await handle_push(gh, session, data, gitlab_client=gitlab_client, config=app.config)
+    await handle_push(gh, data, gitlab_client=gitlab_client, config=app.config)
 
 
 @router.register("issue_comment")

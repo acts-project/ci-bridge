@@ -601,9 +601,7 @@ async def test_handle_push_success(session, monkeypatch, config):
         trigger_pipeline_mock = create_autospec(gitlab_client.trigger_pipeline)
         m.setattr(gitlab_client, "trigger_pipeline", trigger_pipeline_mock)
 
-        await github.handle_push(
-            gidgethub_client, session, event, gitlab_client, config
-        )
+        await github.handle_push(gidgethub_client, event, gitlab_client, config)
 
         # Verify pipeline was triggered with correct parameters
         trigger_pipeline_mock.assert_called_once_with(
@@ -651,9 +649,7 @@ async def test_handle_push_user_not_in_team(session, monkeypatch, config):
         trigger_pipeline_mock = create_autospec(gitlab_client.trigger_pipeline)
         m.setattr(gitlab_client, "trigger_pipeline", trigger_pipeline_mock)
 
-        await github.handle_push(
-            gidgethub_client, session, event, gitlab_client, config
-        )
+        await github.handle_push(gidgethub_client, event, gitlab_client, config)
 
         # Verify rejection status was added and no pipeline was triggered
         add_rejection_status_mock.assert_called_once()
