@@ -226,6 +226,7 @@ async def test_handle_synchronize_success(session, monkeypatch, config):
             repo_slug="test_org_test_repo",
             installation_id=123,
             clone_url="https://github.com/test_org/test_repo.git",
+            clone_repo_slug="test_org_test_repo",
             head_ref="feature-branch",
             config=config,
         )
@@ -610,6 +611,7 @@ async def test_handle_push_success(session, monkeypatch, config):
             repo_slug="test_org_test_repo",
             head_sha="abc123",
             clone_url="https://github.com/test_org/test_repo.git",
+            clone_repo_slug="test_org_test_repo",
             installation_id=123,
             head_ref="main",
             config=config,

@@ -115,6 +115,7 @@ async def test_handle_comment_success(session, monkeypatch, config):
             repo_url="https://api.github.com/repos/test_org/test_repo",
             repo_slug="test_org_test_repo",
             clone_url="https://github.com/test_org/test_repo.git",
+            clone_repo_slug="test_org_test_repo",
             installation_id=123,
             head_ref="test-branch",
             config=config,

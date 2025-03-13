@@ -101,6 +101,7 @@ class GitLab:
         repo_slug: str,
         installation_id: int,
         clone_url: str,
+        clone_repo_slug: str,
         head_ref: str,
         config: Config,
     ):
@@ -124,6 +125,7 @@ class GitLab:
             head_sha=head_sha,
             config_url=ci_config_file["download_url"],
             clone_url=clone_url,
+            clone_repo_slug=clone_repo_slug,
             head_ref=head_ref,
         )
         payload = json.dumps(data.model_dump())
@@ -142,6 +144,7 @@ class GitLab:
                 "variables[CONFIG_URL]": data.config_url,
                 "variables[CLONE_URL]": clone_url,
                 "variables[REPO_SLUG]": repo_slug,
+                "variables[CLONE_REPO_SLUG]": clone_repo_slug,
                 "variables[HEAD_SHA]": head_sha,
                 "variables[HEAD_REF]": head_ref,
             },

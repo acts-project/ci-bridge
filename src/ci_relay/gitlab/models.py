@@ -8,4 +8,5 @@ class PipelineTriggerData(BaseModel):
     head_sha: str
     config_url: str
     clone_url: str
+    clone_repo_slug: str
     head_ref: str

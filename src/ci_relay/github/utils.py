@@ -168,6 +168,9 @@ async def handle_check_suite(
     head_ref = bridge_payload.get(
         "head_ref", ""
     )  # defaulted in case payloads without base_ref are still in flight
+    clone_repo_slug = bridge_payload.get(
+        "clone_repo_slug", ""
+    )  # defaulted in case payloads without clone_repo_slug are still in flight
     logger.debug("Clone url of previous job was: %s", clone_url)
     logger.debug("Head sha previous job was: %s", head_sha)
 
@@ -181,6 +184,7 @@ async def handle_check_suite(
         repo_slug=repo_slug,
         head_sha=head_sha,
         clone_url=clone_url,
+        clone_repo_slug=clone_repo_slug,
         installation_id=event.installation.id,
         head_ref=head_ref,
         config=config,
@@ -234,6 +238,7 @@ async def handle_push(
         repo_slug=repo_slug,
         head_sha=head_sha,
         clone_url=event.repository.clone_url,
+        clone_repo_slug=repo_slug,
         installation_id=event.installation.id,
         head_ref=head_ref,
         config=config,
@@ -370,6 +375,7 @@ async def handle_synchronize(
         repo_url=repo_url,
         repo_slug=repo_slug,
         clone_url=pr.head.repo.clone_url,
+        clone_repo_slug=make_repo_slug(pr.head.repo.full_name),
         installation_id=event.installation.id,
         head_ref=pr.head.ref,
         config=config,
@@ -592,6 +598,7 @@ async def handle_rerun_comment(
         repo_url=event.repository.url,
         repo_slug=make_repo_slug(event.repository.full_name),
         clone_url=pr.head.repo.clone_url,
+        clone_repo_slug=make_repo_slug(pr.head.repo.full_name),
         installation_id=event.installation.id,
         head_ref=pr.head.ref,
         config=config,

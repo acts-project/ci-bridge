@@ -68,6 +68,7 @@ async def test_trigger_pipeline_success(monkeypatch, config):
     repo_slug = "test_org_test_repo"
     installation_id = 123
     clone_url = "https://github.com/test_org/test_repo_fork.git"
+    clone_repo_slug = "test_org_test_repo_fork"
     head_ref = "main"
 
     gidgetlab_client = AsyncMock()
@@ -80,6 +81,7 @@ async def test_trigger_pipeline_success(monkeypatch, config):
         repo_slug=repo_slug,
         installation_id=installation_id,
         clone_url=clone_url,
+        clone_repo_slug=clone_repo_slug,
         head_ref=head_ref,
         config=config,
     )
@@ -104,6 +106,7 @@ async def test_trigger_pipeline_success(monkeypatch, config):
         == "https://raw.githubusercontent.com/test_org/test_repo/main/.gitlab-ci.yml"
     )
     assert call_args["data"]["variables[CLONE_URL]"] == clone_url
+    assert call_args["data"]["variables[CLONE_REPO_SLUG]"] == clone_repo_slug
     assert call_args["data"]["variables[REPO_SLUG]"] == repo_slug
     assert call_args["data"]["variables[HEAD_SHA]"] == head_sha
     assert call_args["data"]["variables[HEAD_REF]"] == head_ref
@@ -147,6 +150,7 @@ async def test_trigger_pipeline_failure(monkeypatch, config):
     repo_slug = "test_org_test_repo"
     installation_id = 123
     clone_url = "https://github.com/test_org/test_repo_fork.git"
+    clone_repo_slug = "test_org_test_repo_fork"
     head_ref = "main"
 
     gidgetlab_client = AsyncMock()
@@ -159,6 +163,7 @@ async def test_trigger_pipeline_failure(monkeypatch, config):
         repo_slug=repo_slug,
         installation_id=installation_id,
         clone_url=clone_url,
+        clone_repo_slug=clone_repo_slug,
         head_ref=head_ref,
         config=config,
     )
@@ -196,6 +201,7 @@ async def test_trigger_pipeline_sterile_mode(monkeypatch, config):
     repo_slug = "test_org_test_repo"
     installation_id = 123
     clone_url = "https://github.com/test_org/test_repo_fork.git"
+    clone_repo_slug = "test_org_test_repo_fork"
     head_ref = "main"
 
     gidgethub_client = AsyncMock()
@@ -210,6 +216,7 @@ async def test_trigger_pipeline_sterile_mode(monkeypatch, config):
         repo_slug=repo_slug,
         installation_id=installation_id,
         clone_url=clone_url,
+        clone_repo_slug=clone_repo_slug,
         head_ref=head_ref,
         config=config,
     )
