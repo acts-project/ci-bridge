@@ -110,7 +110,7 @@ async def test_handle_comment_success(session, monkeypatch, config):
         )
 
         # Verify pipeline was triggered with correct parameters
-        gitlab_client.trigger_pipeline.assert_called_once_with(
+        trigger_pipeline_mock.assert_called_once_with(
             gidgethub_client,
             head_sha="abc123",
             repo_url="https://api.github.com/repos/test_org/test_repo",
@@ -159,27 +159,24 @@ async def test_handle_comment_wrong_action(session, monkeypatch, config):
     gitlab_client = GitLab(session=session, gl=gidgetlab_client, config=config)
 
     with monkeypatch.context() as m:
-        m.setattr(
-            github, "get_author_in_team", create_autospec(github.get_author_in_team)
-        )
+        get_author_in_team_mock = create_autospec(github.get_author_in_team)
         m.setattr(
             github,
-            "is_in_installed_repos",
-            create_autospec(github.is_in_installed_repos),
+            "get_author_in_team",
+            get_author_in_team_mock,
         )
-        m.setattr(
-            gitlab_client,
-            "trigger_pipeline",
-            create_autospec(gitlab_client.trigger_pipeline),
-        )
+        is_in_installed_repos_mock = create_autospec(github.is_in_installed_repos)
+        m.setattr(github, "is_in_installed_repos", is_in_installed_repos_mock)
+        trigger_pipeline_mock = create_autospec(gitlab_client.trigger_pipeline)
+        m.setattr(gitlab_client, "trigger_pipeline", trigger_pipeline_mock)
 
         await github.handle_comment(
             gidgethub_client, session, event, gitlab_client, config
         )
 
         # Verify no team check or pipeline trigger was attempted
-        github.get_author_in_team.assert_not_called()
-        gitlab_client.trigger_pipeline.assert_not_called()
+        get_author_in_team_mock.assert_not_called()
+        trigger_pipeline_mock.assert_not_called()
         # Verify no reaction was created
         gidgethub_client.post.assert_not_called()
 
@@ -222,10 +219,11 @@ async def test_handle_comment_user_not_in_team(session, monkeypatch, config):
         is_in_installed_repos_mock.return_value = True
         m.setattr(github, "is_in_installed_repos", is_in_installed_repos_mock)
 
+        trigger_pipeline_mock = create_autospec(gitlab_client.trigger_pipeline)
         m.setattr(
             gitlab_client,
             "trigger_pipeline",
-            create_autospec(gitlab_client.trigger_pipeline),
+            trigger_pipeline_mock,
         )
 
         await github.handle_comment(
@@ -233,7 +231,7 @@ async def test_handle_comment_user_not_in_team(session, monkeypatch, config):
         )
 
         # Verify no pipeline was triggered
-        gitlab_client.trigger_pipeline.assert_not_called()
+        trigger_pipeline_mock.assert_not_called()
         # Verify no reaction was created
         gidgethub_client.post.assert_not_called()
 
@@ -264,18 +262,19 @@ async def test_handle_comment_not_pr(session, monkeypatch, config):
     gitlab_client = GitLab(session=session, gl=gidgetlab_client, config=config)
 
     with monkeypatch.context() as m:
-        m.setattr(
-            github, "get_author_in_team", create_autospec(github.get_author_in_team)
-        )
+        get_author_in_team_mock = create_autospec(github.get_author_in_team)
+        m.setattr(github, "get_author_in_team", get_author_in_team_mock)
+        is_in_installed_repos_mock = create_autospec(github.is_in_installed_repos)
         m.setattr(
             github,
             "is_in_installed_repos",
-            create_autospec(github.is_in_installed_repos),
+            is_in_installed_repos_mock,
         )
+        trigger_pipeline_mock = create_autospec(gitlab_client.trigger_pipeline)
         m.setattr(
             gitlab_client,
             "trigger_pipeline",
-            create_autospec(gitlab_client.trigger_pipeline),
+            trigger_pipeline_mock,
         )
 
         await github.handle_comment(
@@ -283,8 +282,8 @@ async def test_handle_comment_not_pr(session, monkeypatch, config):
         )
 
         # Verify no team check or pipeline trigger was attempted
-        github.get_author_in_team.assert_not_called()
-        gitlab_client.trigger_pipeline.assert_not_called()
+        get_author_in_team_mock.assert_not_called()
+        trigger_pipeline_mock.assert_not_called()
         # Verify no reaction was created
         gidgethub_client.post.assert_not_called()
 
@@ -319,25 +318,18 @@ async def test_handle_comment_wrong_command(session, monkeypatch, config):
     gitlab_client = GitLab(session=session, gl=gidgetlab_client, config=config)
 
     with monkeypatch.context() as m:
-        m.setattr(
-            github, "get_author_in_team", create_autospec(github.get_author_in_team)
-        )
-        m.setattr(
-            github,
-            "is_in_installed_repos",
-            create_autospec(github.is_in_installed_repos),
-        )
-        m.setattr(
-            gitlab_client,
-            "trigger_pipeline",
-            create_autospec(gitlab_client.trigger_pipeline),
-        )
+        get_author_in_team_mock = create_autospec(github.get_author_in_team)
+        m.setattr(github, "get_author_in_team", get_author_in_team_mock)
+        is_in_installed_repos_mock = create_autospec(github.is_in_installed_repos)
+        m.setattr(github, "is_in_installed_repos", is_in_installed_repos_mock)
+        trigger_pipeline_mock = create_autospec(gitlab_client.trigger_pipeline)
+        m.setattr(gitlab_client, "trigger_pipeline", trigger_pipeline_mock)
 
         await github.handle_comment(
             gidgethub_client, session, event, gitlab_client, config
         )
 
         # Verify no pipeline was triggered for invalid command
-        gitlab_client.trigger_pipeline.assert_not_called()
+        trigger_pipeline_mock.assert_not_called()
         # Verify no reaction was created
         gidgethub_client.post.assert_not_called()
