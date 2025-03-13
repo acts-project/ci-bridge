@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import Mock, AsyncMock, create_autospec
+from unittest.mock import Mock, AsyncMock, create_autospec, MagicMock
 from gidgethub import sansio
 from contextlib import asynccontextmanager
 
@@ -522,11 +522,9 @@ async def test_handle_check_suite_success(session, monkeypatch, config):
     )
 
     # Create a mock GitLab client with async iteration support
-    class MockGitLabClient(AsyncMock):
-        def getiter(self, *args, **kwargs):
-            return AsyncIterator([])
+    gidgetlab_client = AsyncMock()
+    gidgetlab_client.getiter = MagicMock(return_value=AsyncIterator([]))
 
-    gidgetlab_client = MockGitLabClient()
     gitlab_client = GitLab(session=session, gl=gidgetlab_client, config=config)
 
     # Mock other functions
@@ -782,3 +780,71 @@ async def test_handle_rerequest_incompatible_url(session, monkeypatch, config):
 
         # Verify no job retry was posted
         session.post.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_github_on_check_suite_success(app, monkeypatch):
+    event = sansio.Event(
+        event="check_suite",
+        data={
+            "action": "rerequested",
+            "sender": {"login": "sender"},
+            "organization": {"login": "org"},
+            "repository": test_repository.model_dump(),
+            "check_suite": {
+                "id": 123,
+                "app": {"id": 12345},
+                "head_sha": "abc123",
+                "check_runs_url": "https://api.github.com/repos/test_org/test_repo/check-suites/123/check-runs",
+            },
+            "installation": {"id": 123},
+        },
+        delivery_id="72d3162e-cc78-11e3-81ab-4c9367dc0958",
+    )
+
+    gidgethub_client = AsyncMock()
+    gidgetlab_client = AsyncMock()
+
+    with monkeypatch.context() as m:
+        handle_check_suite_mocked = create_autospec(github_router.handle_check_suite)
+        m.setattr(github_router, "handle_check_suite", handle_check_suite_mocked)
+
+        await router.dispatch(
+            event, app=app, gh=gidgethub_client, gl=gidgetlab_client, session=session
+        )
+
+        handle_check_suite_mocked.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_github_on_check_suite_other_action(app, monkeypatch):
+    event = sansio.Event(
+        event="check_suite",
+        data={
+            "action": "completed",  # Different action
+            "sender": {"login": "sender"},
+            "organization": {"login": "org"},
+            "repository": test_repository.model_dump(),
+            "check_suite": {
+                "id": 123,
+                "app": {"id": 12345},
+                "head_sha": "abc123",
+                "check_runs_url": "https://api.github.com/repos/test_org/test_repo/check-suites/123/check-runs",
+            },
+            "installation": {"id": 123},
+        },
+        delivery_id="72d3162e-cc78-11e3-81ab-4c9367dc0958",
+    )
+
+    gidgethub_client = AsyncMock()
+    gidgetlab_client = AsyncMock()
+
+    with monkeypatch.context() as m:
+        handle_check_suite_mocked = create_autospec(github_router.handle_check_suite)
+        m.setattr(github_router, "handle_check_suite", handle_check_suite_mocked)
+
+        await router.dispatch(
+            event, app=app, gh=gidgethub_client, gl=gidgetlab_client, session=session
+        )
+
+        handle_check_suite_mocked.assert_not_called()

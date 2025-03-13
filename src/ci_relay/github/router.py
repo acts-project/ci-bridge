@@ -81,7 +81,10 @@ async def on_check_suite(
     data = CheckSuiteEvent(**event.data)
     if data.action not in ("rerequested",):
         return
-    await handle_check_suite(gh, session, data, gl=gl, config=app.config)
+    gitlab_client = GitLab(session=session, gl=gl, config=app.config)
+    await handle_check_suite(
+        gh, session, data, gitlab_client=gitlab_client, config=app.config
+    )
 
 
 @router.register("push")

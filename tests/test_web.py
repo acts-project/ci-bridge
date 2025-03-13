@@ -42,9 +42,12 @@ async def test_handle_github_webhook(app, monkeypatch):
 
     # Mock client_for_installation
     mock_github_client = AsyncMock()
+    client_for_installation_mock = create_autospec(
+        web.github_utils.client_for_installation
+    )
+    client_for_installation_mock.return_value = mock_github_client
     monkeypatch.setattr(
-        "ci_relay.github.utils.client_for_installation",
-        AsyncMock(return_value=mock_github_client),
+        "ci_relay.github.utils.client_for_installation", client_for_installation_mock
     )
 
     # Mock GitLabAPI
@@ -55,18 +58,19 @@ async def test_handle_github_webhook(app, monkeypatch):
     )
 
     # Mock router dispatch
-    monkeypatch.setattr("ci_relay.github.router.router.dispatch", AsyncMock())
+    dispatch_mock = create_autospec(github_router.router.dispatch)
+    monkeypatch.setattr("ci_relay.github.router.router.dispatch", dispatch_mock)
 
     # Call the handler
     await web.handle_github_webhook(request, app=app)
 
     # Verify client_for_installation was called with correct installation ID
-    web.github_utils.client_for_installation.assert_called_once_with(
+    client_for_installation_mock.assert_called_once_with(
         app=app, installation_id=12345, session=MockANY
     )
 
     # Verify router dispatch was called with correct parameters
-    call_args = github_router.router.dispatch.call_args
+    call_args = dispatch_mock.call_args
     assert call_args[0][0] is event
     assert call_args[1]["gh"] == mock_github_client
     assert call_args[1]["app"] == app
@@ -110,13 +114,14 @@ async def test_handle_gitlab_webhook(app, monkeypatch):
     )
 
     # Mock router dispatch
-    monkeypatch.setattr("ci_relay.gitlab.router.router.dispatch", AsyncMock())
+    dispatch_mock = create_autospec(gitlab_router.router.dispatch)
+    monkeypatch.setattr("ci_relay.gitlab.router.router.dispatch", dispatch_mock)
 
     # Call the handler
     await web.handle_gitlab_webhook(request, app=app)
 
     # Verify router dispatch was called with correct parameters
-    call_args = gitlab_router.router.dispatch.call_args
+    call_args = dispatch_mock.call_args
     assert call_args[0][0] is event
     assert call_args[1]["app"] == app
     assert call_args[1]["gl"] == mock_gitlab_client
@@ -157,9 +162,10 @@ async def test_webhook_endpoints(app: Sanic, monkeypatch):
     )
 
     with monkeypatch.context() as m:
+        dispatch_mock = create_autospec(github_router.router.dispatch)
         m.setattr(
             "ci_relay.github.router.router.dispatch",
-            create_autospec(github_router.router.dispatch),
+            dispatch_mock,
         )
         # Test GitHub webhook endpoint
         _, response = await app.asgi_client.post(
@@ -173,15 +179,13 @@ async def test_webhook_endpoints(app: Sanic, monkeypatch):
         assert response.status_code == 200
         await asyncio.gather(*tasks)
 
-        github_router.router.dispatch.assert_called_once()
+        dispatch_mock.assert_called_once()
 
     tasks = []
 
     with monkeypatch.context() as m:
-        m.setattr(
-            "ci_relay.gitlab.router.router.dispatch",
-            create_autospec(gitlab_router.router.dispatch),
-        )
+        dispatch_mock = create_autospec(gitlab_router.router.dispatch)
+        m.setattr("ci_relay.gitlab.router.router.dispatch", dispatch_mock)
         # Test GitLab webhook endpoint
         _, response = await app.asgi_client.post(
             "/webhook/gitlab",
@@ -192,18 +196,17 @@ async def test_webhook_endpoints(app: Sanic, monkeypatch):
 
         await asyncio.gather(*tasks)
 
-        gitlab_router.router.dispatch.assert_called_once()
+        dispatch_mock.assert_called_once()
 
     tasks = []
 
     with monkeypatch.context() as m:
-        m.setattr(
-            "ci_relay.web.handle_github_webhook",
-            create_autospec(web.handle_github_webhook),
-        )
+        handle_github_webhook_mock = create_autospec(web.handle_github_webhook)
+        m.setattr("ci_relay.web.handle_github_webhook", handle_github_webhook_mock)
+        handle_gitlab_webhook_mock = create_autospec(web.handle_gitlab_webhook)
         m.setattr(
             "ci_relay.web.handle_gitlab_webhook",
-            create_autospec(web.handle_gitlab_webhook),
+            handle_gitlab_webhook_mock,
         )
 
         # Test compatibility endpoint with GitLab event
@@ -216,7 +219,7 @@ async def test_webhook_endpoints(app: Sanic, monkeypatch):
 
         await asyncio.gather(*tasks)
 
-        web.handle_gitlab_webhook.assert_called_once()
+        handle_gitlab_webhook_mock.assert_called_once()
 
         tasks = []
 
@@ -233,7 +236,7 @@ async def test_webhook_endpoints(app: Sanic, monkeypatch):
 
         await asyncio.gather(*tasks)
 
-        web.handle_github_webhook.assert_called_once()
+        handle_github_webhook_mock.assert_called_once()
 
 
 def test_health_check(app, monkeypatch):
