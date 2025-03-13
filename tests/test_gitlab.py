@@ -14,7 +14,7 @@ from ci_relay.signature import Signature
 
 
 @pytest.mark.asyncio
-async def test_gitlab_job_hook(app, monkeypatch, config, session):
+async def test_gitlab_job_hook(app, monkeypatch, session):
     event = sansio.Event(
         event="Job Hook",
         data={"object_kind": "build", "build_status": "success", "build_id": 123},
@@ -80,6 +80,7 @@ async def test_trigger_pipeline_success(monkeypatch, config):
         installation_id=installation_id,
         clone_url=clone_url,
         head_ref=head_ref,
+        config=config,
     )
 
     # Verify GitHub API was called to get CI config
@@ -129,7 +130,12 @@ async def test_trigger_pipeline_failure(monkeypatch, config):
     session.post.return_value = mock_response
 
     # Mock add_failure_status
-    monkeypatch.setattr(github, "add_failure_status", AsyncMock())
+    add_failure_status_mock = create_autospec(github.add_failure_status)
+    monkeypatch.setattr(
+        github,
+        "add_failure_status",
+        add_failure_status_mock,
+    )
 
     # Test parameters
     head_sha = "abc123"
@@ -150,14 +156,16 @@ async def test_trigger_pipeline_failure(monkeypatch, config):
         installation_id=installation_id,
         clone_url=clone_url,
         head_ref=head_ref,
+        config=config,
     )
 
     # Verify failure status was added
-    github.add_failure_status.assert_called_once_with(
+    add_failure_status_mock.assert_called_once_with(
         gidgethub_client,
         head_sha=head_sha,
         repo_url=repo_url,
         message="Invalid configuration",
+        config=config,
     )
 
 
@@ -199,6 +207,7 @@ async def test_trigger_pipeline_sterile_mode(monkeypatch, config):
         installation_id=installation_id,
         clone_url=clone_url,
         head_ref=head_ref,
+        config=config,
     )
 
     # Verify no API calls were made in sterile mode
@@ -337,10 +346,11 @@ async def test_on_job_hook(app, monkeypatch, config):
     )
 
     # Mock handle_pipeline_status
+    handle_pipeline_status_mock = create_autospec(github.handle_pipeline_status)
     monkeypatch.setattr(
         github,
         "handle_pipeline_status",
-        create_autospec(github.handle_pipeline_status),
+        handle_pipeline_status_mock,
     )
 
     # Mock client_for_installation
@@ -367,10 +377,10 @@ async def test_on_job_hook(app, monkeypatch, config):
     await gitlab_router.on_job_hook(event, gitlab_client, app, session)
 
     # Verify client_for_installation was called with correct installation ID
-    github.client_for_installation.assert_called_once_with(app, 12345, session)
+    get_client_for_installation_mock.assert_called_once_with(app, 12345, session)
 
     # Verify handle_pipeline_status was called with correct parameters
-    github.handle_pipeline_status.assert_called_once_with(
+    handle_pipeline_status_mock.assert_called_once_with(
         pipeline=mock_pipeline,
         job=mock_job,
         project=mock_project,

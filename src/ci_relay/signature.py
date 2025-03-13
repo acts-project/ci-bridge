@@ -3,7 +3,7 @@ from typing import Union
 
 
 class Signature:
-    def __init__(self, secret: str):
+    def __init__(self, secret: bytes):
         self.secret = secret
 
     def create(self, payload: Union[str, bytes]) -> str:

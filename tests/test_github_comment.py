@@ -118,6 +118,7 @@ async def test_handle_comment_success(session, monkeypatch, config):
             clone_url="https://github.com/test_org/test_repo.git",
             installation_id=123,
             head_ref="test-branch",
+            config=config,
         )
 
         # Verify reaction was created

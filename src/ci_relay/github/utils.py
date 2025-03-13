@@ -183,6 +183,7 @@ async def handle_check_suite(
         clone_url=clone_url,
         installation_id=event.installation.id,
         head_ref=head_ref,
+        config=config,
     )
 
 
@@ -233,10 +234,10 @@ async def handle_push(
         repo_url=repo_url,
         repo_slug=repo_slug,
         head_sha=head_sha,
-        session=session,
         clone_url=event.repository.clone_url,
         installation_id=event.installation.id,
         head_ref=head_ref,
+        config=config,
     )
 
 
@@ -372,6 +373,7 @@ async def handle_synchronize(
         clone_url=pr.head.repo.clone_url,
         installation_id=event.installation.id,
         head_ref=pr.head.ref,
+        config=config,
     )
 
 
@@ -564,15 +566,17 @@ async def handle_comment(
     comment_body = event.comment.body.strip().lower()
     if comment_body == "/rerun":
         logger.debug("Comment is a rerun command, handling")
-        await handle_rerun_comment(gh, event, gitlab_client)
+        await handle_rerun_comment(gh, event, gitlab_client, config)
 
 
 async def handle_rerun_comment(
-    gh: GitHubAPI,
-    event: IssueCommentEvent,
-    gitlab_client: GitLab,
+    gh: GitHubAPI, event: IssueCommentEvent, gitlab_client: GitLab, config: Config
 ):
     # Get pull-request details from GitHub
+    if event.issue.pull_request is None:
+        # Should be filtered before
+        logger.debug("Comment is not on a PR, ignoring")
+        return
     pr_resp = await gh.getitem(event.issue.pull_request.url)
     pr = PullRequest(**pr_resp)
     logger.debug("PR is: %s", pr.number)
@@ -591,6 +595,7 @@ async def handle_rerun_comment(
         clone_url=pr.head.repo.clone_url,
         installation_id=event.installation.id,
         head_ref=pr.head.ref,
+        config=config,
     )
 
     # create a reaction to the comment

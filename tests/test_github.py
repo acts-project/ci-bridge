@@ -84,10 +84,11 @@ async def test_handle_synchronize_draft_pr(session, monkeypatch, config):
             "cancel_pipelines_if_redundant",
             create_autospec(gitlab_client.cancel_pipelines_if_redundant),
         )
+        trigger_pipeline_mock = create_autospec(gitlab_client.trigger_pipeline)
         m.setattr(
             gitlab_client,
             "trigger_pipeline",
-            create_autospec(gitlab_client.trigger_pipeline),
+            trigger_pipeline_mock,
         )
 
         await github.handle_synchronize(
@@ -95,7 +96,7 @@ async def test_handle_synchronize_draft_pr(session, monkeypatch, config):
         )
 
         # Verify no pipeline was triggered
-        gitlab_client.trigger_pipeline.assert_not_called()
+        trigger_pipeline_mock.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -134,20 +135,25 @@ async def test_handle_synchronize_author_not_in_team(session, monkeypatch, confi
         get_author_in_team_mock.return_value = False
         m.setattr(github, "get_author_in_team", get_author_in_team_mock)
 
+        add_rejection_status_mock = create_autospec(github.add_rejection_status)
         m.setattr(
             github,
             "add_rejection_status",
-            create_autospec(github.add_rejection_status),
+            add_rejection_status_mock,
+        )
+        cancel_pipelines_if_redundant_mock = create_autospec(
+            gitlab_client.cancel_pipelines_if_redundant
         )
         m.setattr(
             gitlab_client,
             "cancel_pipelines_if_redundant",
-            create_autospec(gitlab_client.cancel_pipelines_if_redundant),
+            cancel_pipelines_if_redundant_mock,
         )
+        trigger_pipeline_mock = create_autospec(gitlab_client.trigger_pipeline)
         m.setattr(
             gitlab_client,
             "trigger_pipeline",
-            create_autospec(gitlab_client.trigger_pipeline),
+            trigger_pipeline_mock,
         )
 
         await github.handle_synchronize(
@@ -155,8 +161,8 @@ async def test_handle_synchronize_author_not_in_team(session, monkeypatch, confi
         )
 
         # Verify rejection status was added and no pipeline was triggered
-        github.add_rejection_status.assert_called_once()
-        gitlab_client.trigger_pipeline.assert_not_called()
+        add_rejection_status_mock.assert_called_once()
+        trigger_pipeline_mock.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -213,7 +219,7 @@ async def test_handle_synchronize_success(session, monkeypatch, config):
         )
 
         # Verify pipeline was triggered with correct parameters
-        gitlab_client.trigger_pipeline.assert_called_once_with(
+        trigger_pipeline_mock.assert_called_once_with(
             gidgethub_client,
             head_sha="abc123",
             repo_url="https://api.github.com/repos/test_org/test_repo",
@@ -221,6 +227,7 @@ async def test_handle_synchronize_success(session, monkeypatch, config):
             installation_id=123,
             clone_url="https://github.com/test_org/test_repo.git",
             head_ref="feature-branch",
+            config=config,
         )
 
 
@@ -548,8 +555,8 @@ async def test_handle_check_suite_success(session, monkeypatch, config):
     )
 
     # Verify the pipeline was triggered
-    gitlab_client.trigger_pipeline.assert_called_once()
-    call_args = gitlab_client.trigger_pipeline.call_args[1]
+    trigger_pipeline_mock.assert_called_once()
+    call_args = trigger_pipeline_mock.call_args[1]
     assert call_args["head_sha"] == "abc123"
     assert call_args["repo_url"] == "https://api.github.com/repos/test_org/test_repo"
     assert call_args["repo_slug"] == "test_org_test_repo"
@@ -580,24 +587,34 @@ async def test_handle_push_success(session, monkeypatch, config):
         get_author_in_team_mock = create_autospec(github.get_author_in_team)
         get_author_in_team_mock.return_value = True
         m.setattr(github, "get_author_in_team", get_author_in_team_mock)
-        m.setattr(github, "is_in_installed_repos", AsyncMock(return_value=True))
-        m.setattr(gitlab_client, "cancel_pipelines_if_redundant", AsyncMock())
-        m.setattr(gitlab_client, "trigger_pipeline", AsyncMock())
+        is_in_installed_repos_mock = create_autospec(github.is_in_installed_repos)
+        is_in_installed_repos_mock.return_value = True
+        m.setattr(github, "is_in_installed_repos", is_in_installed_repos_mock)
+        cancel_pipelines_if_redundant_mock = create_autospec(
+            gitlab_client.cancel_pipelines_if_redundant
+        )
+        m.setattr(
+            gitlab_client,
+            "cancel_pipelines_if_redundant",
+            cancel_pipelines_if_redundant_mock,
+        )
+        trigger_pipeline_mock = create_autospec(gitlab_client.trigger_pipeline)
+        m.setattr(gitlab_client, "trigger_pipeline", trigger_pipeline_mock)
 
         await github.handle_push(
             gidgethub_client, session, event, gitlab_client, config
         )
 
         # Verify pipeline was triggered with correct parameters
-        gitlab_client.trigger_pipeline.assert_called_once_with(
+        trigger_pipeline_mock.assert_called_once_with(
             gidgethub_client,
             repo_url="https://api.github.com/repos/test_org/test_repo",
             repo_slug="test_org_test_repo",
             head_sha="abc123",
-            session=session,
             clone_url="https://github.com/test_org/test_repo.git",
             installation_id=123,
             head_ref="main",
+            config=config,
         )
 
 
@@ -618,18 +635,29 @@ async def test_handle_push_user_not_in_team(session, monkeypatch, config):
     gitlab_client = GitLab(session=session, gl=gidgetlab_client, config=config)
 
     with monkeypatch.context() as m:
-        m.setattr(github, "get_author_in_team", AsyncMock(return_value=False))
-        m.setattr(github, "add_rejection_status", AsyncMock())
-        m.setattr(gitlab_client, "cancel_pipelines_if_redundant", AsyncMock())
-        m.setattr(gitlab_client, "trigger_pipeline", AsyncMock())
+        get_author_in_team_mock = create_autospec(github.get_author_in_team)
+        get_author_in_team_mock.return_value = False
+        m.setattr(github, "get_author_in_team", get_author_in_team_mock)
+        add_rejection_status_mock = create_autospec(github.add_rejection_status)
+        m.setattr(github, "add_rejection_status", add_rejection_status_mock)
+        cancel_pipelines_if_redundant_mock = create_autospec(
+            gitlab_client.cancel_pipelines_if_redundant
+        )
+        m.setattr(
+            gitlab_client,
+            "cancel_pipelines_if_redundant",
+            cancel_pipelines_if_redundant_mock,
+        )
+        trigger_pipeline_mock = create_autospec(gitlab_client.trigger_pipeline)
+        m.setattr(gitlab_client, "trigger_pipeline", trigger_pipeline_mock)
 
         await github.handle_push(
             gidgethub_client, session, event, gitlab_client, config
         )
 
         # Verify rejection status was added and no pipeline was triggered
-        github.add_rejection_status.assert_called_once()
-        gitlab_client.trigger_pipeline.assert_not_called()
+        add_rejection_status_mock.assert_called_once()
+        trigger_pipeline_mock.assert_not_called()
 
 
 @pytest.mark.asyncio

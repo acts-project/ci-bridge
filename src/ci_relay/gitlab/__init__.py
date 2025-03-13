@@ -102,6 +102,7 @@ class GitLab:
         installation_id: int,
         clone_url: str,
         head_ref: str,
+        config: Config,
     ):
         if self.config.STERILE:
             logger.debug("Sterile mode: skipping pipeline trigger")
@@ -156,7 +157,11 @@ class GitLab:
                 from ci_relay.github.utils import add_failure_status
 
                 await add_failure_status(
-                    gh, head_sha=head_sha, repo_url=repo_url, message=message
+                    gh,
+                    head_sha=head_sha,
+                    repo_url=repo_url,
+                    message=message,
+                    config=config,
                 )
             else:
                 resp.raise_for_status()
