@@ -11,6 +11,7 @@ from ci_relay.gitlab.router import router
 import ci_relay.github.utils as github
 from ci_relay.gitlab import GitLab
 from ci_relay.signature import Signature
+from ci_relay.gitlab.models import PipelineTriggerData
 
 
 @pytest.mark.asyncio
@@ -66,7 +67,7 @@ async def test_trigger_pipeline_success(monkeypatch, config):
     repo_url = "https://api.github.com/repos/test_org/test_repo"
     repo_slug = "test_org_test_repo"
     installation_id = 123
-    clone_url = "https://github.com/test_org/test_repo.git"
+    clone_url = "https://github.com/test_org/test_repo_fork.git"
     head_ref = "main"
 
     gidgetlab_client = AsyncMock()
@@ -94,6 +95,9 @@ async def test_trigger_pipeline_success(monkeypatch, config):
     assert call_args["data"]["token"] == "test_token"
     assert call_args["data"]["ref"] == "main"
     assert "variables[BRIDGE_PAYLOAD]" in call_args["data"]
+    payload = call_args["data"]["variables[BRIDGE_PAYLOAD]"]
+    # Check this is valid JSON
+    PipelineTriggerData(**json.loads(payload))
     assert "variables[TRIGGER_SIGNATURE]" in call_args["data"]
     assert (
         call_args["data"]["variables[CONFIG_URL]"]
@@ -142,7 +146,7 @@ async def test_trigger_pipeline_failure(monkeypatch, config):
     repo_url = "https://api.github.com/repos/test_org/test_repo"
     repo_slug = "test_org_test_repo"
     installation_id = 123
-    clone_url = "https://github.com/test_org/test_repo.git"
+    clone_url = "https://github.com/test_org/test_repo_fork.git"
     head_ref = "main"
 
     gidgetlab_client = AsyncMock()
@@ -191,7 +195,7 @@ async def test_trigger_pipeline_sterile_mode(monkeypatch, config):
     repo_url = "https://api.github.com/repos/test_org/test_repo"
     repo_slug = "test_org_test_repo"
     installation_id = 123
-    clone_url = "https://github.com/test_org/test_repo.git"
+    clone_url = "https://github.com/test_org/test_repo_fork.git"
     head_ref = "main"
 
     gidgethub_client = AsyncMock()
