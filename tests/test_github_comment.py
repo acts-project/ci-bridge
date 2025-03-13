@@ -75,7 +75,6 @@ async def test_handle_comment_success(session, monkeypatch, config):
             ref="main",
             sha="abc123",
             repo=test_repository,
-            user=User(login="test_user"),
         ),
     )
     gidgethub_client.getitem.return_value = sample_pr.model_dump()
