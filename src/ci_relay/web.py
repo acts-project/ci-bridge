@@ -8,6 +8,7 @@ import gidgetlab.aiohttp
 from sanic.log import logger
 import cachetools
 from aiolimiter import AsyncLimiter
+import tenacity
 
 from ci_relay.config import Config
 from ci_relay.github.router import router as github_router
@@ -19,6 +20,10 @@ def add_task(app: Sanic, task):
     app.add_task(task)
 
 
+@tenacity.retry(
+    stop=tenacity.stop_after_attempt(10),
+    wait=tenacity.wait_exponential(multiplier=1, min=5, max=120),
+)
 async def handle_gitlab_webhook(request, *, app: Sanic):
     async with aiohttp.ClientSession(loop=app.loop) as session:
         event = GitLabEvent.from_http(
@@ -36,6 +41,10 @@ async def handle_gitlab_webhook(request, *, app: Sanic):
         await gitlab_router.dispatch(event, session=session, app=app, gl=gl)
 
 
+@tenacity.retry(
+    stop=tenacity.stop_after_attempt(10),
+    wait=tenacity.wait_exponential(multiplier=1, min=5, max=120),
+)
 async def handle_github_webhook(request, *, app: Sanic):
     async with aiohttp.ClientSession(loop=app.loop) as session:
         event = GitHubEvent.from_http(
