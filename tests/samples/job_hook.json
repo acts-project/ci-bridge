@@ -1,0 +1,78 @@
+{
+    "object_kind": "build",
+    "ref": "main",
+    "tag": false,
+    "before_sha": "0000000000000000000000000000000000000000",
+    "sha": "12b1957a8f1053321231f8440d04f2b897314e46",
+    "retries_count": 0,
+    "build_id": 52202526,
+    "build_name": "clang_tidy",
+    "build_stage": "build",
+    "build_status": "running",
+    "build_created_at": "2025-03-03 16:01:08 UTC",
+    "build_started_at": "2025-03-03 16:45:08 UTC",
+    "build_finished_at": null,
+    "build_duration": 0.068828071,
+    "build_queued_duration": 2639.219650462,
+    "build_allow_failure": false,
+    "build_failure_reason": "unknown_failure",
+    "pipeline_id": 10938404,
+    "runner": {
+        "id": 35356,
+        "description": "default-runner-large",
+        "runner_type": "project_type",
+        "active": true,
+        "is_shared": false,
+        "tags": [
+            "cvmfs",
+            "docker",
+            "large"
+        ]
+    },
+    "project_id": 132265,
+    "project_name": "acts / ci-bridge",
+    "user": {
+        "id": 3789,
+        "name": "Paul Gessinger",
+        "username": "pagessin",
+        "avatar_url": "https://gitlab.cern.ch/uploads/-/system/user/avatar/3789/avatar.png",
+        "email": "[REDACTED]"
+    },
+    "commit": {
+        "id": 10938404,
+        "name": null,
+        "sha": "12b1957a8f1053321231f8440d04f2b897314e46",
+        "message": "add include\n",
+        "author_name": "Paul Gessinger",
+        "author_email": "[REDACTED]",
+        "author_url": "https://gitlab.cern.ch/pagessin",
+        "status": "running",
+        "duration": null,
+        "started_at": "2025-03-03 16:03:55 UTC",
+        "finished_at": null
+    },
+    "repository": {
+        "name": "ci-bridge",
+        "url": "ssh://git@gitlab.cern.ch:7999/acts/ci-bridge.git",
+        "description": "",
+        "homepage": "https://gitlab.cern.ch/acts/ci-bridge",
+        "git_http_url": "https://gitlab.cern.ch/acts/ci-bridge.git",
+        "git_ssh_url": "ssh://git@gitlab.cern.ch:7999/acts/ci-bridge.git",
+        "visibility_level": 20
+    },
+    "project": {
+        "id": 132265,
+        "name": "ci-bridge",
+        "description": "",
+        "web_url": "https://gitlab.cern.ch/acts/ci-bridge",
+        "avatar_url": null,
+        "git_ssh_url": "ssh://git@gitlab.cern.ch:7999/acts/ci-bridge.git",
+        "git_http_url": "https://gitlab.cern.ch/acts/ci-bridge.git",
+        "namespace": "acts",
+        "visibility_level": 20,
+        "path_with_namespace": "acts/ci-bridge",
+        "default_branch": "main",
+        "ci_config_path": ""
+    },
+    "environment": null
+}
