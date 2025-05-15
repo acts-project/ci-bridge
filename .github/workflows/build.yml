@@ -16,7 +16,7 @@ jobs:
         uses: astral-sh/setup-uv@v6
 
       - name: Run nox tests
-        run: uv run nox
+        run: uvx nox
 
   build:
     runs-on: ubuntu-latest
