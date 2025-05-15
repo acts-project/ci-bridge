@@ -8,6 +8,16 @@ on:
       - '**'
 
 jobs:
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install the latest version of uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Run nox tests
+        run: uv run nox
+
   build:
     runs-on: ubuntu-latest
     continue-on-error: true
