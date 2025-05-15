@@ -12,10 +12,11 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+
       - name: Install the latest version of uv
         uses: astral-sh/setup-uv@v6
 
-      - uses: actions/checkout@v4
 
       - name: Run nox tests
         run: uv run nox
