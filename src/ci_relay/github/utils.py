@@ -579,7 +579,7 @@ async def handle_comment(
 
     # Parse comment for commands
     comment_body = event.comment.body.strip().lower()
-    if comment_body == "/rerun":
+    if comment_body in ("/rerun", "/retry"):
         logger.debug("Comment is a rerun command, handling")
         await handle_rerun_comment(gh, event, gitlab_client, config)
 
