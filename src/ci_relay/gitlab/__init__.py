@@ -63,9 +63,6 @@ class GitLab:
             return await resp.json()
 
     async def cancel_pipelines_if_redundant(self, head_ref: str, clone_url: str):
-        if not self.gl:
-            raise ValueError("GitLabAPI client required for this operation")
-
         logger.debug("Checking for redundant pipelines")
         for scope in ["running", "pending"]:
             async for pipeline in self.gl.getiter(

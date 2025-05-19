@@ -14,6 +14,7 @@ from ci_relay.config import Config
 from ci_relay.github.router import router as github_router
 from ci_relay.gitlab.router import router as gitlab_router
 import ci_relay.github.utils as github_utils
+from ci_relay.exceptions import UnrecoverableError
 
 
 def add_task(app: Sanic, task):
@@ -23,6 +24,7 @@ def add_task(app: Sanic, task):
 @tenacity.retry(
     stop=tenacity.stop_after_attempt(10),
     wait=tenacity.wait_exponential(multiplier=1, min=5, max=120),
+    retry=tenacity.retry_if_not_exception_type(UnrecoverableError),
 )
 async def handle_gitlab_webhook(request, *, app: Sanic):
     async with aiohttp.ClientSession(loop=app.loop) as session:
@@ -38,12 +40,17 @@ async def handle_gitlab_webhook(request, *, app: Sanic):
         )
 
         logger.debug("Dispatching event %s", event.event)
-        await gitlab_router.dispatch(event, session=session, app=app, gl=gl)
+        try:
+            await gitlab_router.dispatch(event, session=session, app=app, gl=gl)
+        except BaseException as e:
+            logger.error("GitLab dispatch caught exception: %s", e, exc_info=e)
+            raise
 
 
 @tenacity.retry(
     stop=tenacity.stop_after_attempt(10),
     wait=tenacity.wait_exponential(multiplier=1, min=5, max=120),
+    retry=tenacity.retry_if_not_exception_type(UnrecoverableError),
 )
 async def handle_github_webhook(request, *, app: Sanic):
     async with aiohttp.ClientSession(loop=app.loop) as session:
@@ -67,7 +74,11 @@ async def handle_github_webhook(request, *, app: Sanic):
         )
 
         logger.debug("Dispatching event %s", event.event)
-        await github_router.dispatch(event, session=session, gh=gh, app=app, gl=gl)
+        try:
+            await github_router.dispatch(event, session=session, gh=gh, app=app, gl=gl)
+        except BaseException as e:
+            logger.error("GitHub dispatch caught exception: %s", e, exc_info=e)
+            raise
 
 
 def create_app(*, config: Config | None = None):

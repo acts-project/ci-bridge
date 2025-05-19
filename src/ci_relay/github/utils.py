@@ -10,6 +10,11 @@ from gidgethub.apps import get_installation_access_token
 from sanic.log import logger
 
 from ci_relay.gitlab import GitLab
+from ci_relay.exceptions import (
+    SignatureMismatchError,
+    TeamOrgMismatchError,
+    IncompatibleJobUrlError,
+)
 from ci_relay.github.models import (
     PullRequestEvent,
     CheckSuiteEvent,
@@ -96,7 +101,6 @@ async def handle_check_suite(
     gitlab_client: GitLab,
     config: Config,
 ):
-    print("GO CHECK SUITE")
     logger.debug("Handling check suite")
     sender = event.sender.login
     org = event.organization.login
@@ -159,7 +163,7 @@ async def handle_check_suite(
 
     if not Signature(config.TRIGGER_SECRET).verify(bridge_payload, signature):
         logger.error("Signatures do not match for pipeline behind check suite")
-        raise ValueError("Signature mismatch")
+        raise SignatureMismatchError("Signature mismatch")
 
     bridge_payload = json.loads(bridge_payload)
 
@@ -249,7 +253,7 @@ async def get_gitlab_job(
     session: aiohttp.ClientSession, job_url: str, config: Config
 ) -> dict[str, Any]:
     if not job_url.startswith(config.GITLAB_API_URL):
-        raise ValueError(f"Incompatible external id / job url: {job_url}")
+        raise IncompatibleJobUrlError(f"Incompatible external id / job url: {job_url}")
     logger.debug("Pipeline in question is %s", job_url)
 
     async with session.get(
@@ -306,7 +310,7 @@ async def get_author_in_team(
     allow_org, allow_team = config.ALLOW_TEAM.split("/", 1)
 
     if allow_org != org:
-        raise ValueError(f"Allow team {config.ALLOW_TEAM} not in org {org}")
+        raise TeamOrgMismatchError(f"Allow team {config.ALLOW_TEAM} not in org {org}")
 
     if author == org:
         logger.debug("Author IS the org, continue")
@@ -511,9 +515,6 @@ async def handle_pipeline_status(
         payload["conclusion"] = conclusion
 
         payload["output"]["text"] = f"```\n{log}\n```"
-
-    # repo_url = trigger["head"]["repo"]["url"]
-    # repo_url = trigger["base"]["repo"]["url"]
 
     logger.debug(
         "Posting check run status for sha %s to GitHub: %s",

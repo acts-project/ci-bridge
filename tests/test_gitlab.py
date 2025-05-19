@@ -229,13 +229,7 @@ async def test_trigger_pipeline_sterile_mode(monkeypatch, config):
 @pytest.mark.asyncio
 async def test_gitlab_webhook_success(app, monkeypatch):
     # Create test data
-    payload = {
-        # "object_kind": "build",
-        # "build_status": "success",
-        # "build_id": 123,
-        # "project_id": 456,
-        # "pipeline_id": 789,
-    }
+    payload = {}
 
     # Create mock clients
     gidgethub_client = AsyncMock()
@@ -245,6 +239,8 @@ async def test_gitlab_webhook_success(app, monkeypatch):
         "ci_relay.github.utils.client_for_installation",
         AsyncMock(return_value=gidgethub_client),
     )
+
+    # monkeypatch.setattr()
 
     tasks = []
 

@@ -11,13 +11,19 @@ import asyncio
 import ci_relay.github.utils as github
 from ci_relay.gitlab import GitLab
 from ci_relay.signature import Signature
+from ci_relay.exceptions import (
+    InvalidBuildError,
+    SignatureMismatchError,
+    MissingInstallationIdError,
+)
 
 
 async def on_job_hook(
     event: Event, gitlab_client: GitLab, app: Sanic, session: aiohttp.ClientSession
 ):
+    logger.debug("On job hook")
     if event.data["object_kind"] != "build":
-        raise ValueError("Object is not a build")
+        raise InvalidBuildError(f"Object is not a build: {event.data['object_kind']}")
 
     project_id = event.data["project_id"]
     pipeline_id = event.data["pipeline_id"]
@@ -34,12 +40,14 @@ async def on_job_hook(
 
     if not Signature(app.config.TRIGGER_SECRET).verify(bridge_payload, signature):
         logger.error("Signatures do not match")
-        return
+        raise SignatureMismatchError("Signature mismatch")
 
     bridge_payload = json.loads(bridge_payload)
 
-    print(bridge_payload)
-    assert "installation_id" in bridge_payload
+    logger.debug("Bridge payload: %s", bridge_payload)
+    if "installation_id" not in bridge_payload:
+        raise MissingInstallationIdError("installation_id missing from bridge payload")
+
     installation_id = bridge_payload["installation_id"]
 
     logger.debug("Installation id: %s", installation_id)
