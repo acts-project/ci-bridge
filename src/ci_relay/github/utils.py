@@ -502,9 +502,11 @@ async def handle_pipeline_status(
     output = CheckRunOutput(
         title=title,
         summary=summary,
-        text=f"```\n{log}\n```"
-        if completed_at is not None and check_status == "completed"
-        else None,
+        text=(
+            f"```\n{log}\n```"
+            if completed_at is not None and check_status == "completed"
+            else None
+        ),
     )
 
     payload = CheckRunPayload(
@@ -512,12 +514,16 @@ async def handle_pipeline_status(
         status=check_status,
         head_sha=head_sha,
         started_at=started_at,
-        completed_at=completed_at
-        if completed_at is not None and check_status == "completed"
-        else None,
-        conclusion=conclusion
-        if completed_at is not None and check_status == "completed"
-        else None,
+        completed_at=(
+            completed_at
+            if completed_at is not None and check_status == "completed"
+            else None
+        ),
+        conclusion=(
+            conclusion
+            if completed_at is not None and check_status == "completed"
+            else None
+        ),
         details_url=job["web_url"],
         external_id=gitlab_client.get_job_url(project["id"], job["id"]),
         output=output,
