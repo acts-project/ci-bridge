@@ -114,8 +114,8 @@ class Comment(BaseModel):
 
 
 class ReactionType(StrEnum):
-    thumbsup = "+1"
-    thumbsdown = "-1"
+    plus_one = "+1"
+    minus_one = "-1"
     laugh = "laugh"
     confused = "confused"
     heart = "heart"
@@ -145,3 +145,22 @@ class IssueCommentEvent(BaseModel):
     installation: Installation
     sender: Sender
     repository: Repository
+
+
+# New models for check run
+class CheckRunOutput(BaseModel):
+    title: str
+    summary: str
+    text: str | None = None
+
+
+class CheckRunPayload(BaseModel):
+    name: str
+    status: str
+    head_sha: str
+    started_at: str | None = None
+    completed_at: str | None = None
+    conclusion: str | None = None
+    details_url: str | None = None
+    external_id: str | None = None
+    output: CheckRunOutput

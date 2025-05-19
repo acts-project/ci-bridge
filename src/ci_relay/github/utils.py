@@ -24,6 +24,8 @@ from ci_relay.github.models import (
     ReactionCreateRequest,
     ReactionType,
     CheckRunEvent,
+    CheckRunPayload,
+    CheckRunOutput,
 )
 from ci_relay.signature import Signature
 from ci_relay import utils
@@ -461,7 +463,6 @@ async def handle_pipeline_status(
                 break
 
             selected_lines.append(line)
-            #  logger.debug("%d => %d", size, size + len(line))
             size += len(line) + 1  # +1 for newline
 
         log = f"Showing last {len(selected_lines)} out of {len(lines)} total lines\n\n"
@@ -483,38 +484,44 @@ async def handle_pipeline_status(
     title = f"GitLab CI: {status.upper()}"
     if status == "failed" and job["allow_failure"]:
         title += " [allowed failure]"
-    payload = {
-        "name": f"CI Bridge / {job['name']}",
-        "status": check_status,
-        #  "head_branch": "",
-        "head_sha": head_sha,
-        "output": {
-            "title": title,
-            "summary": (
-                "This check triggered job "
-                f"[{project['path_with_namespace']}/{job['id']}]({job['web_url']})\n"
-                "in pipeline "
-                f"[{project['path_with_namespace']}/{pipeline['iid']}]({pipeline['web_url']})\n"
-                f"Status: {status.upper()}\n"
-                f"Created at: {job['created_at']}\n"
-                f"Started at: {started_at}\n"
-                f"Finished at: {completed_at}\n"
-            ),
-        },
-        "details_url": job["web_url"],
-        "external_id": gitlab_client.get_job_url(project["id"], job["id"]),
-    }
+
+    summary = (
+        "This check triggered job "
+        f"[{project['path_with_namespace']}/{job['id']}]({job['web_url']})\n"
+        "in pipeline "
+        f"[{project['path_with_namespace']}/{pipeline['iid']}]({pipeline['web_url']})\n"
+        f"Status: {status.upper()}\n"
+        f"Created at: {job['created_at']}\n"
+        f"Started at: {started_at}\n"
+        f"Finished at: {completed_at}\n"
+    )
 
     if status == "failed" and pipeline["yaml_errors"] is not None:
-        payload["output"]["summary"] += f"\n\nError in YAML:\n{pipeline['yaml_errors']}"
+        summary += f"\n\nError in YAML:\n{pipeline['yaml_errors']}"
 
-    if started_at is not None:
-        payload["started_at"] = started_at
-    if completed_at is not None and check_status == "completed":
-        payload["completed_at"] = completed_at
-        payload["conclusion"] = conclusion
+    output = CheckRunOutput(
+        title=title,
+        summary=summary,
+        text=f"```\n{log}\n```"
+        if completed_at is not None and check_status == "completed"
+        else None,
+    )
 
-        payload["output"]["text"] = f"```\n{log}\n```"
+    payload = CheckRunPayload(
+        name=f"CI Bridge / {job['name']}",
+        status=check_status,
+        head_sha=head_sha,
+        started_at=started_at,
+        completed_at=completed_at
+        if completed_at is not None and check_status == "completed"
+        else None,
+        conclusion=conclusion
+        if completed_at is not None and check_status == "completed"
+        else None,
+        details_url=job["web_url"],
+        external_id=gitlab_client.get_job_url(project["id"], job["id"]),
+        output=output,
+    )
 
     logger.debug(
         "Posting check run status for sha %s to GitHub: %s",
@@ -523,7 +530,9 @@ async def handle_pipeline_status(
     )
 
     if not config.STERILE:
-        await gh.post(f"{repo_url}/check-runs", data=payload)
+        await gh.post(
+            f"{repo_url}/check-runs", data=payload.model_dump(exclude_none=True)
+        )
 
 
 async def handle_comment(
