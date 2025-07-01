@@ -7,7 +7,7 @@ test:
 image_url := "ghcr.io/acts-project/ci-bridge"
 sha := "sha-" + `git rev-parse --short HEAD`
 image:
-    docker build -t  {{image_url}}:{{sha}} .
+    docker build --platform linux/amd64 -t {{image_url}}:{{sha}} .
     docker tag {{image_url}}:{{sha}} {{image_url}}:latest
     docker push {{image_url}}:{{sha}}
     docker push {{image_url}}:latest
