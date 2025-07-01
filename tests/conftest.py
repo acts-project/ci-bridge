@@ -25,6 +25,7 @@ def config():
         OVERRIDE_LOGGING="DEBUG",
         EXTRA_USERS=["test_user"],
         STERILE=False,
+        GITLAB_IGNORED_JOB_PATTERNS=[],
     )
 
     logger.setLevel(config.OVERRIDE_LOGGING)

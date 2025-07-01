@@ -34,3 +34,5 @@ class Config(BaseSettings):
     EXTRA_USERS: list[str] = []
 
     STERILE: bool = False
+
+    GITLAB_IGNORED_JOB_PATTERNS: list[str] = []

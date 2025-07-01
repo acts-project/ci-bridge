@@ -10,6 +10,7 @@ import asyncio
 
 import ci_relay.github.utils as github
 from ci_relay.gitlab import GitLab
+from ci_relay.gitlab.utils import should_ignore_job
 from ci_relay.signature import Signature
 from ci_relay.exceptions import (
     InvalidBuildError,
@@ -34,6 +35,16 @@ async def on_job_hook(
         gitlab_client.get_project(project_id),
         gitlab_client.get_job(project_id, event.data["build_id"]),
     )
+
+    # Check if job should be ignored based on patterns
+    logger.debug(
+        "Checking if job should be ignored %s (patterns: %s)",
+        job["name"],
+        app.config.GITLAB_IGNORED_JOB_PATTERNS,
+    )
+    if should_ignore_job(job["name"], app.config.GITLAB_IGNORED_JOB_PATTERNS):
+        logger.info(f"Ignoring job '{job['name']}' based on configured patterns")
+        return
 
     bridge_payload = variables["BRIDGE_PAYLOAD"]
     signature = variables["TRIGGER_SIGNATURE"]

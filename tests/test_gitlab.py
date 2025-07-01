@@ -397,3 +397,238 @@ async def test_on_job_hook(app, monkeypatch, config):
         gitlab_client=gitlab_client,
         config=MockANY,
     )
+
+
+@pytest.mark.asyncio
+async def test_on_job_hook_ignores_filtered_jobs(app, monkeypatch, config):
+    """Test that jobs matching ignore patterns are filtered out"""
+    # Set up ignore patterns
+    monkeypatch.setattr(
+        app.config, "GITLAB_IGNORED_JOB_PATTERNS", ["test-.*", ".*-debug"]
+    )
+
+    # Create test event
+    event = sansio.Event(
+        event="Job Hook",
+        data={
+            "object_kind": "build",
+            "build_status": "success",
+            "build_id": 123,
+            "project_id": 456,
+            "pipeline_id": 789,
+        },
+    )
+
+    # Mock utility functions
+    mock_pipeline = {"id": 789, "project_id": 456}
+    mock_variables = {
+        "BRIDGE_PAYLOAD": json.dumps(
+            {
+                "installation_id": 12345,
+                "repo_url": "https://api.github.com/repos/test/org",
+                "head_sha": "abc123",
+            }
+        ),
+        "TRIGGER_SIGNATURE": "valid_signature",
+    }
+    mock_project = {"id": 456, "path_with_namespace": "test/org"}
+    # This job name should match the ignore pattern
+    mock_job = {"id": 123, "name": "test-unit"}
+
+    gidgetlab_client = AsyncMock()
+    session = AsyncMock()
+    gitlab_client = GitLab(session=session, gl=gidgetlab_client, config=config)
+
+    # Mock the gather results
+    get_pipeline_mock = create_autospec(gitlab_client.get_pipeline)
+    get_pipeline_mock.return_value = mock_pipeline
+    monkeypatch.setattr(
+        gitlab_client,
+        "get_pipeline",
+        get_pipeline_mock,
+    )
+
+    get_pipeline_variables_mock = create_autospec(gitlab_client.get_pipeline_variables)
+    get_pipeline_variables_mock.return_value = mock_variables
+    monkeypatch.setattr(
+        gitlab_client,
+        "get_pipeline_variables",
+        get_pipeline_variables_mock,
+    )
+
+    get_project_mock = create_autospec(gitlab_client.get_project)
+    get_project_mock.return_value = mock_project
+    monkeypatch.setattr(
+        gitlab_client,
+        "get_project",
+        get_project_mock,
+    )
+
+    get_job_mock = create_autospec(gitlab_client.get_job)
+    get_job_mock.return_value = mock_job
+    monkeypatch.setattr(
+        gitlab_client,
+        "get_job",
+        get_job_mock,
+    )
+
+    # Mock handle_pipeline_status - this should NOT be called for ignored jobs
+    handle_pipeline_status_mock = create_autospec(github.handle_pipeline_status)
+    monkeypatch.setattr(
+        github,
+        "handle_pipeline_status",
+        handle_pipeline_status_mock,
+    )
+
+    # Mock client_for_installation - this should NOT be called for ignored jobs
+    mock_github_client = AsyncMock()
+    get_client_for_installation_mock = create_autospec(github.client_for_installation)
+    get_client_for_installation_mock.return_value = mock_github_client
+    monkeypatch.setattr(
+        github,
+        "client_for_installation",
+        get_client_for_installation_mock,
+    )
+
+    # Mock Signature verification
+    signature_verify_mock = create_autospec(Signature.verify)
+    signature_verify_mock.return_value = True
+    monkeypatch.setattr(
+        "ci_relay.signature.Signature.verify",
+        signature_verify_mock,
+    )
+
+    session = AsyncMock()
+
+    # Call the function
+    await gitlab_router.on_job_hook(event, gitlab_client, app, session)
+
+    # Verify that the job was fetched (to get the name for filtering)
+    get_job_mock.assert_called_once()
+
+    # Verify that handle_pipeline_status was NOT called (job was ignored)
+    handle_pipeline_status_mock.assert_not_called()
+
+    # Verify that client_for_installation was NOT called (job was ignored)
+    get_client_for_installation_mock.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_on_job_hook_processes_non_filtered_jobs(app, monkeypatch, config):
+    """Test that jobs not matching ignore patterns are processed normally"""
+    # Set up ignore patterns
+    monkeypatch.setattr(config, "GITLAB_IGNORED_JOB_PATTERNS", ["test-.*", ".*-debug"])
+
+    # Create test event
+    event = sansio.Event(
+        event="Job Hook",
+        data={
+            "object_kind": "build",
+            "build_status": "success",
+            "build_id": 123,
+            "project_id": 456,
+            "pipeline_id": 789,
+        },
+    )
+
+    # Mock utility functions
+    mock_pipeline = {"id": 789, "project_id": 456}
+    mock_variables = {
+        "BRIDGE_PAYLOAD": json.dumps(
+            {
+                "installation_id": 12345,
+                "repo_url": "https://api.github.com/repos/test/org",
+                "head_sha": "abc123",
+            }
+        ),
+        "TRIGGER_SIGNATURE": "valid_signature",
+    }
+    mock_project = {"id": 456, "path_with_namespace": "test/org"}
+    # This job name should NOT match the ignore pattern
+    mock_job = {"id": 123, "name": "build-production"}
+
+    gidgetlab_client = AsyncMock()
+    session = AsyncMock()
+    gitlab_client = GitLab(session=session, gl=gidgetlab_client, config=config)
+
+    # Mock the gather results
+    get_pipeline_mock = create_autospec(gitlab_client.get_pipeline)
+    get_pipeline_mock.return_value = mock_pipeline
+    monkeypatch.setattr(
+        gitlab_client,
+        "get_pipeline",
+        get_pipeline_mock,
+    )
+
+    get_pipeline_variables_mock = create_autospec(gitlab_client.get_pipeline_variables)
+    get_pipeline_variables_mock.return_value = mock_variables
+    monkeypatch.setattr(
+        gitlab_client,
+        "get_pipeline_variables",
+        get_pipeline_variables_mock,
+    )
+
+    get_project_mock = create_autospec(gitlab_client.get_project)
+    get_project_mock.return_value = mock_project
+    monkeypatch.setattr(
+        gitlab_client,
+        "get_project",
+        get_project_mock,
+    )
+
+    get_job_mock = create_autospec(gitlab_client.get_job)
+    get_job_mock.return_value = mock_job
+    monkeypatch.setattr(
+        gitlab_client,
+        "get_job",
+        get_job_mock,
+    )
+
+    # Mock handle_pipeline_status - this SHOULD be called for non-ignored jobs
+    handle_pipeline_status_mock = create_autospec(github.handle_pipeline_status)
+    monkeypatch.setattr(
+        github,
+        "handle_pipeline_status",
+        handle_pipeline_status_mock,
+    )
+
+    # Mock client_for_installation - this SHOULD be called for non-ignored jobs
+    mock_github_client = AsyncMock()
+    get_client_for_installation_mock = create_autospec(github.client_for_installation)
+    get_client_for_installation_mock.return_value = mock_github_client
+    monkeypatch.setattr(
+        github,
+        "client_for_installation",
+        get_client_for_installation_mock,
+    )
+
+    # Mock Signature verification
+    signature_verify_mock = create_autospec(Signature.verify)
+    signature_verify_mock.return_value = True
+    monkeypatch.setattr(
+        "ci_relay.signature.Signature.verify",
+        signature_verify_mock,
+    )
+
+    session = AsyncMock()
+
+    # Call the function
+    await gitlab_router.on_job_hook(event, gitlab_client, app, session)
+
+    # Verify that the job was fetched
+    get_job_mock.assert_called_once()
+
+    # Verify that client_for_installation was called with correct installation ID
+    get_client_for_installation_mock.assert_called_once_with(app, 12345, session)
+
+    # Verify that handle_pipeline_status was called with correct parameters
+    handle_pipeline_status_mock.assert_called_once_with(
+        pipeline=mock_pipeline,
+        job=mock_job,
+        project=mock_project,
+        repo_url="https://api.github.com/repos/test/org",
+        head_sha="abc123",
+        gh=mock_github_client,
+        gitlab_client=gitlab_client,
+        config=MockANY,
+    )
