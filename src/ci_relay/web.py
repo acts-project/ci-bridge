@@ -90,6 +90,9 @@ def create_app(*, config: Config | None = None):
 
     logger.setLevel(config.OVERRIDE_LOGGING)
 
+    # Print configuration on startup (with sensitive values masked)
+    config.print_config()
+
     app.ctx.cache = cachetools.LRUCache(maxsize=500)
 
     limiter = AsyncLimiter(10)

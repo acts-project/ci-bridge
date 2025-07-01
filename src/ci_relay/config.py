@@ -1,6 +1,7 @@
 from typing import Literal
 
 from pydantic_settings import BaseSettings
+from sanic.log import logger
 
 
 class Config(BaseSettings):
@@ -36,3 +37,25 @@ class Config(BaseSettings):
     STERILE: bool = False
 
     GITLAB_IGNORED_JOB_PATTERNS: list[str] = []
+
+    def print_config(self):
+        """Print configuration values with sensitive attributes masked"""
+        sensitive_attrs = {
+            "WEBHOOK_SECRET",
+            "PRIVATE_KEY",
+            "GITLAB_ACCESS_TOKEN",
+            "GITLAB_PIPELINE_TRIGGER_TOKEN",
+            "TRIGGER_SECRET",
+            "GITLAB_WEBHOOK_SECRET",
+        }
+
+        logger.info("=== CI Bridge Configuration ===")
+        for field_name, field_value in self.model_dump().items():
+            if field_name in sensitive_attrs:
+                if isinstance(field_value, bytes):
+                    logger.info(f"{field_name}: *** (bytes)")
+                else:
+                    logger.info(f"{field_name}: ***")
+            else:
+                logger.info(f"{field_name}: {field_value}")
+        logger.info("================================")
