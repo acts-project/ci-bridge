@@ -10,6 +10,7 @@ from ci_relay.gitlab.models import PipelineTriggerData
 from ci_relay.signature import Signature
 
 
+
 class GitLab:
     def __init__(self, session: aiohttp.ClientSession, gl: GitLabAPI, config: Config):
         self.session = session
@@ -96,9 +97,11 @@ class GitLab:
         head_sha: str,
         repo_url: str,
         repo_slug: str,
+        repo_name: str,
         installation_id: int,
         clone_url: str,
         clone_repo_slug: str,
+        clone_repo_name: str,
         head_ref: str,
         config: Config,
     ):
@@ -119,10 +122,12 @@ class GitLab:
             installation_id=installation_id,
             repo_url=repo_url,
             repo_slug=repo_slug,
+            repo_name=repo_name,
             head_sha=head_sha,
             config_url=ci_config_file["download_url"],
             clone_url=clone_url,
             clone_repo_slug=clone_repo_slug,
+            clone_repo_name=clone_repo_name,
             head_ref=head_ref,
         )
         payload = json.dumps(data.model_dump())
@@ -142,6 +147,8 @@ class GitLab:
                 "variables[CLONE_URL]": clone_url,
                 "variables[REPO_SLUG]": repo_slug,
                 "variables[CLONE_REPO_SLUG]": clone_repo_slug,
+                "variables[REPO_NAME]": repo_name,
+                "variables[CLONE_REPO_NAME]": clone_repo_name,
                 "variables[HEAD_SHA]": head_sha,
                 "variables[HEAD_REF]": head_ref,
             },

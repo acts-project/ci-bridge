@@ -6,7 +6,7 @@ from gidgethub.abc import GitHubAPI
 from gidgethub import aiohttp as gh_aiohttp
 import gidgethub
 import aiohttp
-from gidgethub.apps import get_installation_access_token
+from gidgethub.apps import get_installation_access_token, get_jwt
 from sanic.log import logger
 
 from ci_relay.gitlab import GitLab
@@ -177,6 +177,9 @@ async def handle_check_suite(
     clone_repo_slug = bridge_payload.get(
         "clone_repo_slug", ""
     )  # defaulted in case payloads without clone_repo_slug are still in flight
+    clone_repo_name = bridge_payload.get(
+        "clone_repo_name", ""
+    )  # defaulted in case payloads without clone_repo_name are still in flight
     logger.debug("Clone url of previous job was: %s", clone_url)
     logger.debug("Head sha previous job was: %s", head_sha)
 
@@ -188,9 +191,11 @@ async def handle_check_suite(
         gh,
         repo_url=repo_url,
         repo_slug=repo_slug,
+        repo_name=event.repository.full_name,
         head_sha=head_sha,
         clone_url=clone_url,
         clone_repo_slug=clone_repo_slug,
+        clone_repo_name=clone_repo_name,
         installation_id=event.installation.id,
         head_ref=head_ref,
         config=config,
@@ -242,9 +247,11 @@ async def handle_push(
         gh,
         repo_url=repo_url,
         repo_slug=repo_slug,
+        repo_name=event.repository.full_name,
         head_sha=head_sha,
         clone_url=event.repository.clone_url,
         clone_repo_slug=repo_slug,
+        clone_repo_name=event.repository.full_name,
         installation_id=event.installation.id,
         head_ref=head_ref,
         config=config,
@@ -380,8 +387,10 @@ async def handle_synchronize(
         head_sha=head_sha,
         repo_url=repo_url,
         repo_slug=repo_slug,
+        repo_name=pr.base.repo.full_name,
         clone_url=pr.head.repo.clone_url,
         clone_repo_slug=make_repo_slug(pr.head.repo.full_name),
+        clone_repo_name=pr.head.repo.full_name,
         installation_id=event.installation.id,
         head_ref=pr.head.ref,
         config=config,
@@ -613,8 +622,10 @@ async def handle_rerun_comment(
         head_sha=pr.head.sha,
         repo_url=event.repository.url,
         repo_slug=make_repo_slug(event.repository.full_name),
+        repo_name=event.repository.full_name,
         clone_url=pr.head.repo.clone_url,
         clone_repo_slug=make_repo_slug(pr.head.repo.full_name),
+        clone_repo_name=pr.head.repo.full_name,
         installation_id=event.installation.id,
         head_ref=pr.head.ref,
         config=config,
@@ -625,3 +636,133 @@ async def handle_rerun_comment(
         event.comment.reactions.url,
         data=ReactionCreateRequest(content=ReactionType.rocket).model_dump(),
     )
+
+
+
+
+
+async def has_gitlab_workflow(gh: GitHubAPI, repo: str) -> bool:
+    """
+    Check if a repository has a workflow that listens for gitlab-job-finished repository_dispatch events.
+    
+    Args:
+        gh: Authenticated GitHub API client
+        repo: Repository name in "owner/repo" format
+        
+    Returns:
+        True if repository has a compatible workflow, False otherwise
+    """
+    try:
+        # Get all workflows in the repository
+        workflows_resp = await gh.getitem(f"/repos/{repo}/actions/workflows")
+        workflows = workflows_resp.get("workflows", [])
+        
+        logger.debug("Found %d workflows in repository %s", len(workflows), repo)
+        
+        # Check each workflow file for repository_dispatch trigger with gitlab-job-finished type
+        for workflow in workflows:
+            try:
+                # Get workflow content
+                workflow_resp = await gh.getitem(f"/repos/{repo}/contents/{workflow['path']}")
+                
+                # Decode base64 content
+                import base64
+                content = base64.b64decode(workflow_resp["content"]).decode("utf-8")
+                
+                # Simple check for repository_dispatch and gitlab-job-finished
+                # This is a basic text search, could be improved with YAML parsing
+                if ("repository_dispatch" in content and 
+                    "gitlab-job-finished" in content):
+                    logger.debug(
+                        "Found GitLab workflow trigger in %s: %s", 
+                        repo, workflow["path"]
+                    )
+                    return True
+                    
+            except Exception as e:
+                logger.debug("Error checking workflow %s in %s: %s", 
+                           workflow["path"], repo, e)
+                continue
+                
+        logger.debug("No GitLab workflow triggers found in repository %s", repo)
+        return False
+        
+    except Exception as e:
+        logger.debug("Error checking workflows in repository %s: %s", repo, e)
+        return False
+
+
+async def trigger_github_workflow(
+    gh: GitHubAPI,
+    repo_name: str,
+    gitlab_job: dict[str, Any],
+    gitlab_project: dict[str, Any],
+    gitlab_pipeline: dict[str, Any],
+    config: Config,
+):
+    """
+    Trigger a GitHub workflow via repository dispatch event if the repository has a compatible workflow.
+    
+    Args:
+        gh: Authenticated GitHub API client (from existing installation)
+        repo_name: Repository name from bridge payload in "owner/repo" format
+        gitlab_job: GitLab job data
+        gitlab_project: GitLab project data
+        gitlab_pipeline: GitLab pipeline data
+        config: Application configuration
+    """
+    logger.debug("Checking repository %s for GitLab workflow triggers", repo_name)
+    
+    # Check if repository has a workflow that listens for gitlab-job-finished events
+    if not await has_gitlab_workflow(gh, repo_name):
+        logger.debug(
+            "Repository %s does not have GitLab workflow triggers, skipping", 
+            repo_name
+        )
+        return False
+    
+    logger.debug("Repository %s has GitLab workflow triggers, proceeding", repo_name)
+    
+    # Prepare payload for GitHub repository dispatch
+    dispatch_payload = {
+        "event_type": "gitlab-job-finished",
+        "client_payload": {
+            "job_status": gitlab_job["status"],
+            "job_name": gitlab_job["name"],
+            "job_id": gitlab_job["id"],
+            "job_url": gitlab_job["web_url"],
+            "project_name": gitlab_project["name"],
+            "project_path": gitlab_project["path_with_namespace"],
+            "ref": gitlab_pipeline["ref"],
+            "commit_sha": gitlab_pipeline["sha"],
+            "pipeline_id": gitlab_pipeline["id"],
+            "pipeline_url": gitlab_pipeline["web_url"],
+            "created_at": gitlab_job["created_at"],
+            "started_at": gitlab_job["started_at"],
+            "finished_at": gitlab_job["finished_at"],
+            "allow_failure": gitlab_job["allow_failure"],
+            "gitlab_project_id": gitlab_project["id"],
+        }
+    }
+    
+    # Send repository dispatch event
+    try:
+        if not config.STERILE:
+            await gh.post(
+                f"/repos/{repo_name}/dispatches",
+                data=dispatch_payload
+            )
+            logger.info(
+                "Successfully triggered GitHub workflow for repo %s (job: %s, status: %s)",
+                repo_name, gitlab_job["name"], gitlab_job["status"]
+            )
+        else:
+            logger.info(
+                "STERILE mode: Would trigger GitHub workflow for repo %s (job: %s, status: %s)",
+                repo_name, gitlab_job["name"], gitlab_job["status"]
+            )
+        return True
+        
+    except Exception as e:
+        logger.error("Failed to trigger GitHub workflow for repo %s: %s", repo_name, e)
+        return False
