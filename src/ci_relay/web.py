@@ -90,18 +90,19 @@ def create_app(*, config: Config | None = None):
 
     logger.setLevel(config.OVERRIDE_LOGGING)
 
-    # Print configuration on startup (with sensitive values masked)
-    config.print_config()
-
     app.ctx.cache = cachetools.LRUCache(maxsize=500)
 
     limiter = AsyncLimiter(10)
 
     @app.listener("before_server_start")
     async def init(app, loop):
+        # Print configuration on startup (with sensitive values masked)
+        config.print_config()
+
         logger.debug("Creating aiohttp session")
         async with aiohttp.ClientSession(loop=loop) as session:
             gh = gh_aiohttp.GitHubAPI(session, __name__)
+            print(app.config.PRIVATE_KEY)
             jwt = get_jwt(app_id=app.config.APP_ID, private_key=app.config.PRIVATE_KEY)
             app_info = await gh.getitem("/app", jwt=jwt)
             app.ctx.app_info = app_info
