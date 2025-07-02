@@ -1,0 +1,48 @@
+name: GitLab Triggered Workflow
+
+on:
+  repository_dispatch:
+    types: [gitlab-job-finished]
+
+jobs:
+  gitlab-triggered-job:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: main  # Always use main branch as requested
+          
+      - name: Display GitLab job information
+        run: |
+          echo "GitLab job finished!"
+          echo "Job Status: ${{ github.event.client_payload.job_status }}"
+          echo "Job Name: ${{ github.event.client_payload.job_name }}"
+          echo "Project: ${{ github.event.client_payload.project_name }}"
+          echo "Branch: ${{ github.event.client_payload.ref }}"
+          echo "Commit SHA: ${{ github.event.client_payload.commit_sha }}"
+          echo "Pipeline URL: ${{ github.event.client_payload.pipeline_url }}"
+          
+      - name: Install the latest version of uv
+        uses: astral-sh/setup-uv@v6
+        
+      - name: Run tests (triggered by GitLab)
+        run: uv run nox
+        
+      - name: Custom actions based on GitLab job status
+        run: |
+          if [[ "${{ github.event.client_payload.job_status }}" == "success" ]]; then
+            echo "GitLab job succeeded - running success actions"
+            # Add your success-specific commands here
+          elif [[ "${{ github.event.client_payload.job_status }}" == "failed" ]]; then
+            echo "GitLab job failed - running failure actions"
+            # Add your failure-specific commands here
+            exit 1
+          else
+            echo "Unknown job status: ${{ github.event.client_payload.job_status }}"
+          fi
+          
+      - name: Notify completion
+        run: |
+          echo "GitHub workflow triggered by GitLab has completed!"
