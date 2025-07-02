@@ -26,6 +26,8 @@ def config():
         EXTRA_USERS=["test_user"],
         STERILE=False,
         GITLAB_IGNORED_JOB_PATTERNS=[],
+        ENABLE_GITLAB_TO_GITHUB_TRIGGERING=False,
+        GITLAB_TO_GITHUB_TRIGGER_ON_STATUS=["success", "failed"],
     )
 
     logger.setLevel(config.OVERRIDE_LOGGING)

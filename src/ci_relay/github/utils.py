@@ -627,31 +627,19 @@ async def handle_rerun_comment(
     )
 
 
-def extract_repo_from_url(repo_url: str) -> str | None:
+def repo_slug_to_owner_repo(repo_slug: str) -> str:
     """
-    Extract owner/repo from GitHub repository URL.
+    Convert repo_slug (underscore format) to owner/repo format.
     
     Args:
-        repo_url: GitHub repository URL (e.g. "https://api.github.com/repos/owner/repo")
+        repo_slug: Repository slug in "owner_repo" format
         
     Returns:
-        Repository name in "owner/repo" format, or None if parsing fails
+        Repository name in "owner/repo" format
     """
-    try:
-        # Handle both API URLs and web URLs
-        if "/repos/" in repo_url:
-            # API URL: https://api.github.com/repos/owner/repo
-            parts = repo_url.split("/repos/")
-            if len(parts) == 2:
-                return parts[1].rstrip("/")
-        elif "github.com/" in repo_url:
-            # Web URL: https://github.com/owner/repo
-            parts = repo_url.split("github.com/")
-            if len(parts) == 2:
-                return parts[1].rstrip("/").rstrip(".git")
-        return None
-    except Exception:
-        return None
+    # repo_slug is in format "owner_repo" where underscore separates owner and repo
+    # Convert to "owner/repo" format
+    return repo_slug.replace("_", "/", 1)  # Only replace first underscore
 
 
 async def has_gitlab_workflow(gh: GitHubAPI, repo: str) -> bool:
@@ -707,7 +695,7 @@ async def has_gitlab_workflow(gh: GitHubAPI, repo: str) -> bool:
 
 async def trigger_github_workflow(
     gh: GitHubAPI,
-    repo_url: str,
+    repo_slug: str,
     gitlab_job: dict[str, Any],
     gitlab_project: dict[str, Any],
     gitlab_pipeline: dict[str, Any],
@@ -718,17 +706,14 @@ async def trigger_github_workflow(
     
     Args:
         gh: Authenticated GitHub API client (from existing installation)
-        repo_url: GitHub repository URL from bridge payload
+        repo_slug: Repository slug from bridge payload in "owner_repo" format
         gitlab_job: GitLab job data
         gitlab_project: GitLab project data
         gitlab_pipeline: GitLab pipeline data
         config: Application configuration
     """
-    # Extract repository name from URL
-    repo = extract_repo_from_url(repo_url)
-    if not repo:
-        logger.warning("Could not extract repository name from URL: %s", repo_url)
-        return False
+    # Convert repo_slug to owner/repo format
+    repo = repo_slug_to_owner_repo(repo_slug)
     
     logger.debug("Checking repository %s for GitLab workflow triggers", repo)
     
