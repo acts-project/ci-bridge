@@ -6,7 +6,7 @@ from gidgetlab.sansio import Event
 
 import ci_relay.gitlab.router as gitlab_router
 import ci_relay.github.utils as github_utils
-from ci_relay.gitlab import GitLab, extract_repo_name_from_url
+from ci_relay.gitlab import GitLab
 from ci_relay.signature import Signature
 
 
@@ -256,25 +256,7 @@ on:
         # Verify no actual repository dispatch was called
         gh.post.assert_not_called()
 
-    @pytest.mark.asyncio
-    async def test_extract_repo_name_from_url(self):
-        """Test extraction of owner/repo from various GitHub URL formats."""
-        # Test API URLs
-        assert extract_repo_name_from_url("https://api.github.com/repos/myorg/myrepo") == "myorg/myrepo"
-        assert extract_repo_name_from_url("https://api.github.com/repos/user/repo-with-dashes") == "user/repo-with-dashes"
-        
-        # Test web URLs 
-        assert extract_repo_name_from_url("https://github.com/myorg/myrepo") == "myorg/myrepo"
-        assert extract_repo_name_from_url("https://github.com/myorg/myrepo.git") == "myorg/myrepo"
-        assert extract_repo_name_from_url("https://github.com/user/repo_with_underscores") == "user/repo_with_underscores"
-        
-        # Test edge cases
-        assert extract_repo_name_from_url("https://github.com/org/repo/") == "org/repo"
-        assert extract_repo_name_from_url("https://api.github.com/repos/org/repo/") == "org/repo"
-        
-        # Test error case
-        with pytest.raises(ValueError):
-            extract_repo_name_from_url("invalid-url")
+
 
     @pytest.mark.asyncio
     async def test_has_gitlab_workflow_detection(self, monkeypatch, config):

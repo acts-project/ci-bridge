@@ -177,6 +177,9 @@ async def handle_check_suite(
     clone_repo_slug = bridge_payload.get(
         "clone_repo_slug", ""
     )  # defaulted in case payloads without clone_repo_slug are still in flight
+    clone_repo_name = bridge_payload.get(
+        "clone_repo_name", ""
+    )  # defaulted in case payloads without clone_repo_name are still in flight
     logger.debug("Clone url of previous job was: %s", clone_url)
     logger.debug("Head sha previous job was: %s", head_sha)
 
@@ -188,9 +191,11 @@ async def handle_check_suite(
         gh,
         repo_url=repo_url,
         repo_slug=repo_slug,
+        repo_name=event.repository.full_name,
         head_sha=head_sha,
         clone_url=clone_url,
         clone_repo_slug=clone_repo_slug,
+        clone_repo_name=clone_repo_name,
         installation_id=event.installation.id,
         head_ref=head_ref,
         config=config,
@@ -242,9 +247,11 @@ async def handle_push(
         gh,
         repo_url=repo_url,
         repo_slug=repo_slug,
+        repo_name=event.repository.full_name,
         head_sha=head_sha,
         clone_url=event.repository.clone_url,
         clone_repo_slug=repo_slug,
+        clone_repo_name=event.repository.full_name,
         installation_id=event.installation.id,
         head_ref=head_ref,
         config=config,
@@ -380,8 +387,10 @@ async def handle_synchronize(
         head_sha=head_sha,
         repo_url=repo_url,
         repo_slug=repo_slug,
+        repo_name=pr.base.repo.full_name,
         clone_url=pr.head.repo.clone_url,
         clone_repo_slug=make_repo_slug(pr.head.repo.full_name),
+        clone_repo_name=pr.head.repo.full_name,
         installation_id=event.installation.id,
         head_ref=pr.head.ref,
         config=config,
@@ -613,8 +622,10 @@ async def handle_rerun_comment(
         head_sha=pr.head.sha,
         repo_url=event.repository.url,
         repo_slug=make_repo_slug(event.repository.full_name),
+        repo_name=event.repository.full_name,
         clone_url=pr.head.repo.clone_url,
         clone_repo_slug=make_repo_slug(pr.head.repo.full_name),
+        clone_repo_name=pr.head.repo.full_name,
         installation_id=event.installation.id,
         head_ref=pr.head.ref,
         config=config,

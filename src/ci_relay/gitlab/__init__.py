@@ -10,43 +10,6 @@ from ci_relay.gitlab.models import PipelineTriggerData
 from ci_relay.signature import Signature
 
 
-def extract_repo_name_from_url(url: str) -> str:
-    """
-    Extract owner/repo from GitHub URL.
-    
-    Args:
-        url: GitHub URL (API or web format)
-        
-    Returns:
-        Repository name in "owner/repo" format
-        
-    Examples:
-        "https://api.github.com/repos/owner/repo" -> "owner/repo"
-        "https://github.com/owner/repo.git" -> "owner/repo"
-        "https://github.com/owner/repo" -> "owner/repo"
-    """
-    if "/repos/" in url:
-        # API URL: https://api.github.com/repos/owner/repo
-        parts = url.split("/repos/")
-        if len(parts) == 2:
-            return parts[1].rstrip("/")
-    elif "github.com/" in url:
-        # Web URL: https://github.com/owner/repo or https://github.com/owner/repo.git
-        parts = url.split("github.com/")
-        if len(parts) == 2:
-            repo_part = parts[1].rstrip("/")
-            if repo_part.endswith(".git"):
-                repo_part = repo_part[:-4]  # Remove .git suffix
-            return repo_part
-    
-    # Fallback: try to extract from any URL with owner/repo pattern
-    import re
-    match = re.search(r"([^/]+/[^/]+?)(?:\.git)?/?$", url)
-    if match:
-        return match.group(1)
-    
-    raise ValueError(f"Could not extract repository name from URL: {url}")
-
 
 class GitLab:
     def __init__(self, session: aiohttp.ClientSession, gl: GitLabAPI, config: Config):
@@ -134,9 +97,11 @@ class GitLab:
         head_sha: str,
         repo_url: str,
         repo_slug: str,
+        repo_name: str,
         installation_id: int,
         clone_url: str,
         clone_repo_slug: str,
+        clone_repo_name: str,
         head_ref: str,
         config: Config,
     ):
@@ -152,10 +117,6 @@ class GitLab:
         ci_config_file = await gh.getitem(
             f"{repo_url}/contents/.gitlab-ci.yml?ref={head_sha}"
         )
-
-        # Extract owner/repo format from URLs
-        repo_name = extract_repo_name_from_url(repo_url)
-        clone_repo_name = extract_repo_name_from_url(clone_url)
 
         data = PipelineTriggerData(
             installation_id=installation_id,
