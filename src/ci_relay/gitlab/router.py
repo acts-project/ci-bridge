@@ -38,7 +38,7 @@ async def on_job_hook(
 
     # Check if job should be ignored based on patterns
     logger.debug(
-        "Checking if job should be ignored %s (patterns: %s)",
+        "Checking if job should be ignored '%s' (patterns: %s)",
         job["name"],
         app.config.GITLAB_IGNORED_JOB_PATTERNS,
     )
