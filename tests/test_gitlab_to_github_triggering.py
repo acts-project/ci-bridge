@@ -85,7 +85,7 @@ jobs:
         
         # Verify workflows were checked
         gh.getitem.assert_any_call("/repos/myorg/myrepo/actions/workflows")
-        gh.getitem.assert_any_call("/repos/myorg/myrepo/contents/.github/workflows/gitlab-trigger.yml")
+        gh.getitem.assert_any_call("/repos/myorg/myrepo/contents/.github/workflows/ci.yml")
         
         # Verify repository dispatch was called
         gh.post.assert_called_once()
@@ -179,10 +179,9 @@ jobs:
         """Test error handling when GitHub API calls fail."""
         # Mock GitHub API client
         gh = AsyncMock()
-        
+
         # Mock API error
-        from gidgethub import BadRequest
-        gh.getitem.side_effect = BadRequest(status_code=404, response={}, request={})
+        gh.getitem.side_effect = Exception("GitHub API error")
         
         # Test data
         repo_name = "myorg/myrepo"
@@ -233,9 +232,27 @@ on:
         
         # Test data
         repo_name = "myorg/myrepo"
-        gitlab_job = {"id": 123, "name": "test-job", "status": "success"}
-        gitlab_project = {"id": 456, "name": "myproject"}
-        gitlab_pipeline = {"id": 789, "ref": "main", "sha": "abc123"}
+        gitlab_job = {
+            "id": 123,
+            "name": "test-job",
+            "status": "success",
+            "web_url": "https://gitlab.com/project/-/jobs/123",
+            "created_at": "2023-01-01T10:00:00Z",
+            "started_at": "2023-01-01T10:01:00Z",
+            "finished_at": "2023-01-01T10:05:00Z",
+            "allow_failure": False,
+        }
+        gitlab_project = {
+            "id": 456,
+            "name": "myproject",
+            "path_with_namespace": "myorg/myproject",
+        }
+        gitlab_pipeline = {
+            "id": 789,
+            "ref": "main",
+            "sha": "abc123def456",
+            "web_url": "https://gitlab.com/project/-/pipelines/789",
+        }
         
         # Call the function
         result = await github_utils.trigger_github_workflow(
@@ -326,8 +343,8 @@ jobs:
     async def test_on_job_hook_with_gitlab_to_github_triggering_enabled(self, app, monkeypatch, config):
         """Test the full job hook flow with GitLab to GitHub triggering enabled."""
         # Enable GitLab to GitHub triggering
-        monkeypatch.setattr(config, "ENABLE_GITLAB_TO_GITHUB_TRIGGERING", True)
-        monkeypatch.setattr(config, "GITLAB_TO_GITHUB_TRIGGER_ON_STATUS", ["success", "failed"])
+        monkeypatch.setattr(app.config, "ENABLE_GITLAB_TO_GITHUB_TRIGGERING", True)
+        monkeypatch.setattr(app.config, "GITLAB_TO_GITHUB_TRIGGER_ON_STATUS", ["success", "failed"])
         
         # Create test event
         event = Event(
@@ -410,14 +427,14 @@ jobs:
             gitlab_job=mock_job,
             gitlab_project=mock_project,
             gitlab_pipeline=mock_pipeline,
-            config=config,
+            config=app.config,
         )
 
     @pytest.mark.asyncio
     async def test_on_job_hook_with_triggering_disabled(self, app, monkeypatch, config):
         """Test that GitLab to GitHub triggering is skipped when disabled."""
         # Disable GitLab to GitHub triggering
-        monkeypatch.setattr(config, "ENABLE_GITLAB_TO_GITHUB_TRIGGERING", False)
+        monkeypatch.setattr(app.config, "ENABLE_GITLAB_TO_GITHUB_TRIGGERING", False)
         
         # Create test event
         event = Event(
@@ -477,8 +494,8 @@ jobs:
     async def test_on_job_hook_with_non_triggering_status(self, app, monkeypatch, config):
         """Test that GitLab to GitHub triggering is skipped for non-configured job statuses."""
         # Enable GitLab to GitHub triggering but only for "success" status
-        monkeypatch.setattr(config, "ENABLE_GITLAB_TO_GITHUB_TRIGGERING", True)
-        monkeypatch.setattr(config, "GITLAB_TO_GITHUB_TRIGGER_ON_STATUS", ["success"])
+        monkeypatch.setattr(app.config, "ENABLE_GITLAB_TO_GITHUB_TRIGGERING", True)
+        monkeypatch.setattr(app.config, "GITLAB_TO_GITHUB_TRIGGER_ON_STATUS", ["success"])
         
         # Create test event with "running" status (not in trigger list)
         event = Event(
@@ -538,8 +555,8 @@ jobs:
     async def test_trigger_github_workflow_error_handling(self, app, monkeypatch, config):
         """Test error handling in GitLab to GitHub workflow triggering."""
         # Enable GitLab to GitHub triggering
-        monkeypatch.setattr(config, "ENABLE_GITLAB_TO_GITHUB_TRIGGERING", True)
-        monkeypatch.setattr(config, "GITLAB_TO_GITHUB_TRIGGER_ON_STATUS", ["success"])
+        monkeypatch.setattr(app.config, "ENABLE_GITLAB_TO_GITHUB_TRIGGERING", True)
+        monkeypatch.setattr(app.config, "GITLAB_TO_GITHUB_TRIGGER_ON_STATUS", ["success"])
         
         # Create test event
         event = Event(
@@ -560,6 +577,7 @@ jobs:
                 "installation_id": 12345,
                 "repo_url": "https://api.github.com/repos/myorg/myrepo",
                 "repo_slug": "myorg_myrepo",
+                "repo_name": "myorg/myrepo",
                 "head_sha": "abc123",
             }),
             "TRIGGER_SIGNATURE": "valid_signature",
@@ -600,7 +618,7 @@ jobs:
     async def test_on_job_hook_feature_disabled_comprehensive(self, app, monkeypatch, config):
         """Comprehensive test that GitLab to GitHub triggering is completely skipped when ENABLE_GITLAB_TO_GITHUB_TRIGGERING is False."""
         # Explicitly disable GitLab to GitHub triggering
-        monkeypatch.setattr(config, "ENABLE_GITLAB_TO_GITHUB_TRIGGERING", False)
+        monkeypatch.setattr(app.config, "ENABLE_GITLAB_TO_GITHUB_TRIGGERING", False)
         
         # Create test event with success status (would normally trigger)
         event = Event(
