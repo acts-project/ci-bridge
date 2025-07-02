@@ -86,7 +86,7 @@ async def on_job_hook(
         try:
             success = await github.trigger_github_workflow(
                 gh=gh,
-                repo_slug=bridge_payload["repo_slug"],
+                repo_name=bridge_payload["repo_name"],
                 gitlab_job=job,
                 gitlab_project=project,
                 gitlab_pipeline=pipeline,

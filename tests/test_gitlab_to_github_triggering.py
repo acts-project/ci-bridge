@@ -6,7 +6,7 @@ from gidgetlab.sansio import Event
 
 import ci_relay.gitlab.router as gitlab_router
 import ci_relay.github.utils as github_utils
-from ci_relay.gitlab import GitLab
+from ci_relay.gitlab import GitLab, extract_repo_name_from_url
 from ci_relay.signature import Signature
 
 
@@ -47,7 +47,7 @@ jobs:
         gh.post = AsyncMock()
         
         # Test data
-        repo_slug = "myorg_myrepo"
+        repo_name = "myorg/myrepo"
         gitlab_job = {
             "id": 123,
             "name": "test-job",
@@ -73,7 +73,7 @@ jobs:
         # Call the function
         result = await github_utils.trigger_github_workflow(
             gh=gh,
-            repo_slug=repo_slug,
+            repo_name=repo_name,
             gitlab_job=gitlab_job,
             gitlab_project=gitlab_project,
             gitlab_pipeline=gitlab_pipeline,
@@ -150,7 +150,7 @@ jobs:
         gh.post = AsyncMock()
         
         # Test data
-        repo_slug = "myorg_myrepo"
+        repo_name = "myorg/myrepo"
         gitlab_job = {"id": 123, "name": "test-job", "status": "success"}
         gitlab_project = {"id": 456, "name": "myproject"}
         gitlab_pipeline = {"id": 789, "ref": "main", "sha": "abc123"}
@@ -158,7 +158,7 @@ jobs:
         # Call the function
         result = await github_utils.trigger_github_workflow(
             gh=gh,
-            repo_slug=repo_slug,
+            repo_name=repo_name,
             gitlab_job=gitlab_job,
             gitlab_project=gitlab_project,
             gitlab_pipeline=gitlab_pipeline,
@@ -185,7 +185,7 @@ jobs:
         gh.getitem.side_effect = BadRequest(status_code=404, response={}, request={})
         
         # Test data
-        repo_slug = "myorg_myrepo"
+        repo_name = "myorg/myrepo"
         gitlab_job = {"id": 123, "name": "test-job", "status": "success"}
         gitlab_project = {"id": 456, "name": "myproject"}
         gitlab_pipeline = {"id": 789, "ref": "main", "sha": "abc123"}
@@ -193,7 +193,7 @@ jobs:
         # Call the function
         result = await github_utils.trigger_github_workflow(
             gh=gh,
-            repo_slug=repo_slug,
+            repo_name=repo_name,
             gitlab_job=gitlab_job,
             gitlab_project=gitlab_project,
             gitlab_pipeline=gitlab_pipeline,
@@ -232,7 +232,7 @@ on:
         gh.post = AsyncMock()
         
         # Test data
-        repo_slug = "myorg_myrepo"
+        repo_name = "myorg/myrepo"
         gitlab_job = {"id": 123, "name": "test-job", "status": "success"}
         gitlab_project = {"id": 456, "name": "myproject"}
         gitlab_pipeline = {"id": 789, "ref": "main", "sha": "abc123"}
@@ -240,7 +240,7 @@ on:
         # Call the function
         result = await github_utils.trigger_github_workflow(
             gh=gh,
-            repo_slug=repo_slug,
+            repo_name=repo_name,
             gitlab_job=gitlab_job,
             gitlab_project=gitlab_project,
             gitlab_pipeline=gitlab_pipeline,
@@ -257,11 +257,24 @@ on:
         gh.post.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_repo_slug_to_owner_repo_conversion(self):
-        """Test conversion from repo_slug format to owner/repo format."""
-        assert github_utils.repo_slug_to_owner_repo("myorg_myrepo") == "myorg/myrepo"
-        assert github_utils.repo_slug_to_owner_repo("github_actions") == "github/actions"
-        assert github_utils.repo_slug_to_owner_repo("user_repo_with_underscores") == "user/repo_with_underscores"
+    async def test_extract_repo_name_from_url(self):
+        """Test extraction of owner/repo from various GitHub URL formats."""
+        # Test API URLs
+        assert extract_repo_name_from_url("https://api.github.com/repos/myorg/myrepo") == "myorg/myrepo"
+        assert extract_repo_name_from_url("https://api.github.com/repos/user/repo-with-dashes") == "user/repo-with-dashes"
+        
+        # Test web URLs 
+        assert extract_repo_name_from_url("https://github.com/myorg/myrepo") == "myorg/myrepo"
+        assert extract_repo_name_from_url("https://github.com/myorg/myrepo.git") == "myorg/myrepo"
+        assert extract_repo_name_from_url("https://github.com/user/repo_with_underscores") == "user/repo_with_underscores"
+        
+        # Test edge cases
+        assert extract_repo_name_from_url("https://github.com/org/repo/") == "org/repo"
+        assert extract_repo_name_from_url("https://api.github.com/repos/org/repo/") == "org/repo"
+        
+        # Test error case
+        with pytest.raises(ValueError):
+            extract_repo_name_from_url("invalid-url")
 
     @pytest.mark.asyncio
     async def test_has_gitlab_workflow_detection(self, monkeypatch, config):
@@ -353,6 +366,7 @@ jobs:
                 "installation_id": 12345,
                 "repo_url": "https://api.github.com/repos/myorg/myrepo",
                 "repo_slug": "myorg_myrepo",
+                "repo_name": "myorg/myrepo",
                 "head_sha": "abc123",
             }),
             "TRIGGER_SIGNATURE": "valid_signature",
@@ -410,7 +424,7 @@ jobs:
         # Verify GitLab to GitHub workflow triggering was called
         trigger_github_workflow_mock.assert_called_once_with(
             gh=mock_github_client,
-            repo_slug="myorg_myrepo",
+            repo_name="myorg/myrepo",
             gitlab_job=mock_job,
             gitlab_project=mock_project,
             gitlab_pipeline=mock_pipeline,
@@ -599,3 +613,74 @@ jobs:
 
         # Verify GitLab to GitHub workflow triggering was called despite the error
         trigger_github_workflow_mock.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_on_job_hook_feature_disabled_comprehensive(self, app, monkeypatch, config):
+        """Comprehensive test that GitLab to GitHub triggering is completely skipped when ENABLE_GITLAB_TO_GITHUB_TRIGGERING is False."""
+        # Explicitly disable GitLab to GitHub triggering
+        monkeypatch.setattr(config, "ENABLE_GITLAB_TO_GITHUB_TRIGGERING", False)
+        
+        # Create test event with success status (would normally trigger)
+        event = Event(
+            event="Job Hook",
+            data={
+                "object_kind": "build",
+                "build_status": "success", 
+                "build_id": 123,
+                "project_id": 456,
+                "pipeline_id": 789,
+            },
+        )
+
+        # Mock GitLab data with proper bridge payload
+        mock_pipeline = {"id": 789, "project_id": 456, "ref": "main", "sha": "abc123"}
+        mock_variables = {
+            "BRIDGE_PAYLOAD": json.dumps({
+                "installation_id": 12345,
+                "repo_url": "https://api.github.com/repos/myorg/myrepo",
+                "repo_slug": "myorg_myrepo",
+                "repo_name": "myorg/myrepo",
+                "head_sha": "abc123",
+            }),
+            "TRIGGER_SIGNATURE": "valid_signature",
+        }
+        mock_project = {"id": 456, "path_with_namespace": "myorg/myproject"}
+        mock_job = {"id": 123, "name": "test_job", "status": "success"}
+
+        # Create GitLab client
+        session = AsyncMock()
+        gidgetlab_client = AsyncMock()
+        gitlab_client = GitLab(session=session, gl=gidgetlab_client, config=config)
+
+        # Mock GitLab client methods to return proper data
+        monkeypatch.setattr(gitlab_client, "get_pipeline", AsyncMock(return_value=mock_pipeline))
+        monkeypatch.setattr(gitlab_client, "get_pipeline_variables", AsyncMock(return_value=mock_variables))
+        monkeypatch.setattr(gitlab_client, "get_project", AsyncMock(return_value=mock_project))
+        monkeypatch.setattr(gitlab_client, "get_job", AsyncMock(return_value=mock_job))
+
+        # Mock GitHub client and existing functionality
+        mock_github_client = AsyncMock()
+        monkeypatch.setattr(github_utils, "client_for_installation", AsyncMock(return_value=mock_github_client))
+        
+        # Mock existing pipeline status handling (should still be called)
+        handle_pipeline_status_mock = AsyncMock()
+        monkeypatch.setattr(github_utils, "handle_pipeline_status", handle_pipeline_status_mock)
+
+        # Mock GitLab to GitHub workflow triggering (should NOT be called)
+        trigger_github_workflow_mock = create_autospec(github_utils.trigger_github_workflow)
+        monkeypatch.setattr(github_utils, "trigger_github_workflow", trigger_github_workflow_mock)
+
+        # Mock signature verification
+        monkeypatch.setattr("ci_relay.signature.Signature.verify", lambda self, payload, signature: True)
+
+        # Call the on_job_hook function directly 
+        await gitlab_router.on_job_hook(event, gitlab_client, app, session)
+
+        # Verify existing functionality was still called (the main CI Bridge functionality should work)
+        handle_pipeline_status_mock.assert_called_once()
+
+        # Verify GitLab to GitHub workflow triggering was completely skipped
+        trigger_github_workflow_mock.assert_not_called()
+        
+        # Verify the function never even tried to access the repo_name from bridge payload
+        # (by ensuring no errors were raised due to the feature being disabled)

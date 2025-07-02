@@ -627,19 +627,7 @@ async def handle_rerun_comment(
     )
 
 
-def repo_slug_to_owner_repo(repo_slug: str) -> str:
-    """
-    Convert repo_slug (underscore format) to owner/repo format.
-    
-    Args:
-        repo_slug: Repository slug in "owner_repo" format
-        
-    Returns:
-        Repository name in "owner/repo" format
-    """
-    # repo_slug is in format "owner_repo" where underscore separates owner and repo
-    # Convert to "owner/repo" format
-    return repo_slug.replace("_", "/", 1)  # Only replace first underscore
+
 
 
 async def has_gitlab_workflow(gh: GitHubAPI, repo: str) -> bool:
@@ -695,7 +683,7 @@ async def has_gitlab_workflow(gh: GitHubAPI, repo: str) -> bool:
 
 async def trigger_github_workflow(
     gh: GitHubAPI,
-    repo_slug: str,
+    repo_name: str,
     gitlab_job: dict[str, Any],
     gitlab_project: dict[str, Any],
     gitlab_pipeline: dict[str, Any],
@@ -706,26 +694,23 @@ async def trigger_github_workflow(
     
     Args:
         gh: Authenticated GitHub API client (from existing installation)
-        repo_slug: Repository slug from bridge payload in "owner_repo" format
+        repo_name: Repository name from bridge payload in "owner/repo" format
         gitlab_job: GitLab job data
         gitlab_project: GitLab project data
         gitlab_pipeline: GitLab pipeline data
         config: Application configuration
     """
-    # Convert repo_slug to owner/repo format
-    repo = repo_slug_to_owner_repo(repo_slug)
-    
-    logger.debug("Checking repository %s for GitLab workflow triggers", repo)
+    logger.debug("Checking repository %s for GitLab workflow triggers", repo_name)
     
     # Check if repository has a workflow that listens for gitlab-job-finished events
-    if not await has_gitlab_workflow(gh, repo):
+    if not await has_gitlab_workflow(gh, repo_name):
         logger.debug(
             "Repository %s does not have GitLab workflow triggers, skipping", 
-            repo
+            repo_name
         )
         return False
     
-    logger.debug("Repository %s has GitLab workflow triggers, proceeding", repo)
+    logger.debug("Repository %s has GitLab workflow triggers, proceeding", repo_name)
     
     # Prepare payload for GitHub repository dispatch
     dispatch_payload = {
@@ -753,20 +738,20 @@ async def trigger_github_workflow(
     try:
         if not config.STERILE:
             await gh.post(
-                f"/repos/{repo}/dispatches",
+                f"/repos/{repo_name}/dispatches",
                 data=dispatch_payload
             )
             logger.info(
                 "Successfully triggered GitHub workflow for repo %s (job: %s, status: %s)",
-                repo, gitlab_job["name"], gitlab_job["status"]
+                repo_name, gitlab_job["name"], gitlab_job["status"]
             )
         else:
             logger.info(
                 "STERILE mode: Would trigger GitHub workflow for repo %s (job: %s, status: %s)",
-                repo, gitlab_job["name"], gitlab_job["status"]
+                repo_name, gitlab_job["name"], gitlab_job["status"]
             )
         return True
         
     except Exception as e:
-        logger.error("Failed to trigger GitHub workflow for repo %s: %s", repo, e)
+        logger.error("Failed to trigger GitHub workflow for repo %s: %s", repo_name, e)
         return False
