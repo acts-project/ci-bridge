@@ -102,7 +102,6 @@ def create_app(*, config: Config | None = None):
         logger.debug("Creating aiohttp session")
         async with aiohttp.ClientSession(loop=loop) as session:
             gh = gh_aiohttp.GitHubAPI(session, __name__)
-            print(app.config.PRIVATE_KEY)
             jwt = get_jwt(app_id=app.config.APP_ID, private_key=app.config.PRIVATE_KEY)
             app_info = await gh.getitem("/app", jwt=jwt)
             app.ctx.app_info = app_info
