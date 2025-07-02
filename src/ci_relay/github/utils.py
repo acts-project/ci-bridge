@@ -6,7 +6,7 @@ from gidgethub.abc import GitHubAPI
 from gidgethub import aiohttp as gh_aiohttp
 import gidgethub
 import aiohttp
-from gidgethub.apps import get_installation_access_token
+from gidgethub.apps import get_installation_access_token, get_jwt
 from sanic.log import logger
 
 from ci_relay.gitlab import GitLab
@@ -625,3 +625,137 @@ async def handle_rerun_comment(
         event.comment.reactions.url,
         data=ReactionCreateRequest(content=ReactionType.rocket).model_dump(),
     )
+
+
+async def trigger_github_workflow(
+    session: aiohttp.ClientSession,
+    target_repo: str,
+    app,
+    gitlab_job: dict[str, Any],
+    gitlab_project: dict[str, Any],
+    gitlab_pipeline: dict[str, Any],
+    config: Config,
+):
+    """
+    Trigger a GitHub workflow via repository dispatch event.
+    
+    Args:
+        session: aiohttp client session
+        target_repo: Target GitHub repository in format "owner/repo"
+        app: Sanic app instance with GitHub App configuration
+        gitlab_job: GitLab job data
+        gitlab_project: GitLab project data
+        gitlab_pipeline: GitLab pipeline data
+        config: Application configuration
+    """
+    logger.debug("Triggering GitHub workflow for repo: %s", target_repo)
+    
+    # Create GitHub API client using the app's installation
+    gh = gh_aiohttp.GitHubAPI(session, __name__)
+    jwt = get_jwt(app_id=config.APP_ID, private_key=config.PRIVATE_KEY)
+    
+    # Get app installations to find the right one for the target repo
+    try:
+        installations = await gh.getitem("/app/installations", jwt=jwt)
+    except Exception as e:
+        logger.error("Failed to get app installations: %s", e)
+        return False
+    
+    # Find installation for the target repo
+    target_installation_id = None
+    for installation in installations:
+        try:
+            # Get installation access token
+            access_token_response = await get_installation_access_token(
+                gh,
+                installation_id=installation["id"],
+                app_id=config.APP_ID,
+                private_key=config.PRIVATE_KEY,
+            )
+            
+            # Create authenticated client for this installation
+            gh_auth = gh_aiohttp.GitHubAPI(
+                session,
+                __name__,
+                oauth_token=access_token_response["token"],
+            )
+            
+            # Check if target repo is accessible
+            try:
+                repo_info = await gh_auth.getitem(f"/repos/{target_repo}")
+                target_installation_id = installation["id"]
+                logger.debug("Found target repo in installation: %s", installation["id"])
+                break
+            except gidgethub.BadRequest as e:
+                if e.status_code == 404:
+                    continue  # Repo not in this installation
+                else:
+                    logger.warning("Error checking repo %s in installation %s: %s", 
+                                 target_repo, installation["id"], e)
+                    continue
+                    
+        except Exception as e:
+            logger.warning("Error checking installation %s: %s", installation["id"], e)
+            continue
+    
+    if target_installation_id is None:
+        logger.error("Target repository %s not found in any app installation", target_repo)
+        return False
+    
+    # Get authenticated client for the target installation
+    access_token_response = await get_installation_access_token(
+        gh,
+        installation_id=target_installation_id,
+        app_id=config.APP_ID,
+        private_key=config.PRIVATE_KEY,
+    )
+    
+    gh_target = gh_aiohttp.GitHubAPI(
+        session,
+        __name__,
+        oauth_token=access_token_response["token"],
+    )
+    
+    # Prepare payload for GitHub repository dispatch
+    dispatch_payload = {
+        "event_type": "gitlab-job-finished",
+        "client_payload": {
+            "job_status": gitlab_job["status"],
+            "job_name": gitlab_job["name"],
+            "job_id": gitlab_job["id"],
+            "job_url": gitlab_job["web_url"],
+            "project_name": gitlab_project["name"],
+            "project_path": gitlab_project["path_with_namespace"],
+            "ref": gitlab_pipeline["ref"],
+            "commit_sha": gitlab_pipeline["sha"],
+            "pipeline_id": gitlab_pipeline["id"],
+            "pipeline_url": gitlab_pipeline["web_url"],
+            "created_at": gitlab_job["created_at"],
+            "started_at": gitlab_job["started_at"],
+            "finished_at": gitlab_job["finished_at"],
+            "allow_failure": gitlab_job["allow_failure"],
+            "gitlab_project_id": gitlab_project["id"],
+        }
+    }
+    
+    # Send repository dispatch event
+    try:
+        if not config.STERILE:
+            await gh_target.post(
+                f"/repos/{target_repo}/dispatches",
+                data=dispatch_payload
+            )
+            logger.info(
+                "Successfully triggered GitHub workflow for repo %s (job: %s, status: %s)",
+                target_repo, gitlab_job["name"], gitlab_job["status"]
+            )
+        else:
+            logger.info(
+                "STERILE mode: Would trigger GitHub workflow for repo %s (job: %s, status: %s)",
+                target_repo, gitlab_job["name"], gitlab_job["status"]
+            )
+        return True
+        
+    except Exception as e:
+        logger.error("Failed to trigger GitHub workflow for repo %s: %s", target_repo, e)
+        return False
