@@ -77,16 +77,27 @@ async def on_job_hook(
     )
 
     # Check if GitLab to GitHub workflow triggering is enabled
-    if (app.config.ENABLE_GITLAB_TO_GITHUB_TRIGGERING and 
-        job["status"] in app.config.GITLAB_TO_GITHUB_TRIGGER_ON_STATUS):
-        
-        logger.debug("GitLab to GitHub triggering is enabled, checking repository for workflows")
-        
+    if (
+        app.config.ENABLE_GITLAB_TO_GITHUB_TRIGGERING
+        and job["status"] in app.config.GITLAB_TO_GITHUB_TRIGGER_ON_STATUS
+    ):
+        logger.debug(
+            "GitLab to GitHub triggering is enabled, checking repository for workflows"
+        )
+
+        repo_name = bridge_payload.get("repo_name")
+
+        if not repo_name:
+            logger.info(
+                "Repo name not found in bridge payload, must be an older job. skipping"
+            )
+            return
+
         # Trigger GitHub workflow in the repository where the status is being posted
         try:
             success = await github.trigger_github_workflow(
                 gh=gh,
-                repo_name=bridge_payload["repo_name"],
+                repo_name=repo_name,
                 gitlab_job=job,
                 gitlab_project=project,
                 gitlab_pipeline=pipeline,
@@ -95,18 +106,17 @@ async def on_job_hook(
             if success:
                 logger.info(
                     "Successfully triggered GitHub workflow (GitLab job: %s, status: %s)",
-                    job["name"], job["status"]
+                    job["name"],
+                    job["status"],
                 )
             else:
                 logger.debug(
                     "No GitHub workflow triggered (GitLab job: %s, status: %s)",
-                    job["name"], job["status"]
+                    job["name"],
+                    job["status"],
                 )
         except Exception as e:
-            logger.error(
-                "Error triggering GitHub workflow: %s",
-                e, exc_info=e
-            )
+            logger.error("Error triggering GitHub workflow: %s", e, exc_info=e)
 
 
 router = Router()
