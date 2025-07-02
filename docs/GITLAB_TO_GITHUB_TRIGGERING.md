@@ -1,6 +1,6 @@
 # GitLab to GitHub Workflow Triggering
 
-This feature allows the CI Bridge to trigger GitHub Actions workflows when GitLab CI jobs finish. When a GitLab job completes (success, failure, or other configured statuses), the system can automatically trigger GitHub workflows on the main branch of specified target repositories.
+This feature allows the CI Bridge to trigger GitHub Actions workflows when GitLab CI jobs finish. When a GitLab job completes (success, failure, or other configured statuses), the system automatically checks the target repository for compatible workflows and triggers them on the main branch.
 
 ## Overview
 
@@ -8,22 +8,20 @@ The GitLab to GitHub triggering functionality extends the existing CI Bridge cap
 
 1. **Monitoring GitLab job completions** - Listening for GitLab job hook events
 2. **Filtering by job status** - Only triggering on configured job statuses (e.g., success, failed)
-3. **Targeting specific repositories** - Triggering workflows only in configured GitHub repositories
-4. **Using repository dispatch** - Sending GitHub repository dispatch events to trigger workflows
-5. **Running on main branch** - Always triggering workflows on the main branch as requested
+3. **Auto-detecting target repositories** - Uses the repository where GitLab status is posted
+4. **Workflow detection** - Automatically checks if repository has compatible workflows
+5. **Using repository dispatch** - Sending GitHub repository dispatch events to trigger workflows
+6. **Running on main branch** - Always triggering workflows on the main branch as requested
 
 ## Configuration
 
-Add the following environment variables to enable and configure GitLab to GitHub triggering:
+Add the following environment variables to enable GitLab to GitHub triggering:
 
 ### Required Configuration
 
 ```bash
 # Enable the feature
 ENABLE_GITLAB_TO_GITHUB_TRIGGERING=true
-
-# Target repositories (comma-separated list of "owner/repo" strings)
-GITLAB_TO_GITHUB_TARGET_REPOS=["myorg/frontend-repo", "myorg/docs-repo"]
 ```
 
 ### Optional Configuration
@@ -38,13 +36,71 @@ GITLAB_TO_GITHUB_TRIGGER_ON_STATUS=["success", "failed", "canceled"]
 ```bash
 # .env file or environment variables
 ENABLE_GITLAB_TO_GITHUB_TRIGGERING=true
-GITLAB_TO_GITHUB_TARGET_REPOS=["myorg/website", "myorg/documentation"]
 GITLAB_TO_GITHUB_TRIGGER_ON_STATUS=["success"]
 ```
 
+## How It Works
+
+1. **GitLab job completes** - A GitLab CI job finishes with a configured status
+2. **Repository identification** - The system uses the repository URL from the GitLab bridge payload
+3. **Workflow detection** - Checks if the repository has workflows listening for `repository_dispatch` events with type `gitlab-job-finished`
+4. **Conditional triggering** - Only triggers if compatible workflows are found
+5. **Workflow execution** - GitHub workflow runs on the main branch with GitLab job data
+
 ## GitHub Actions Workflow
 
-The system triggers GitHub workflows using the `repository_dispatch` event type `gitlab-job-finished`. A sample workflow is provided in `.github/workflows/gitlab-trigger.yml`.
+The system triggers GitHub workflows using the `repository_dispatch` event type `gitlab-job-finished`. You need to create a workflow in your target repository that listens for these events.
+
+### Creating a Workflow
+
+Create a file like `.github/workflows/gitlab-trigger.yml` in your target repository:
+
+```yaml
+name: GitLab Job Triggered Workflow
+
+on:
+  repository_dispatch:
+    types: [gitlab-job-finished]
+
+jobs:
+  gitlab-triggered-job:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: main  # Always use main branch
+          
+      - name: Display GitLab job information
+        run: |
+          echo "🚀 GitLab job has finished!"
+          echo "📊 Job Status: ${{ github.event.client_payload.job_status }}"
+          echo "🔧 Job Name: ${{ github.event.client_payload.job_name }}"
+          echo "🆔 Job ID: ${{ github.event.client_payload.job_id }}"
+          echo "🔗 Job URL: ${{ github.event.client_payload.job_url }}"
+          echo "📁 Project: ${{ github.event.client_payload.project_name }}"
+          echo "🌿 Branch: ${{ github.event.client_payload.ref }}"
+          echo "📝 Commit SHA: ${{ github.event.client_payload.commit_sha }}"
+          
+      - name: Custom actions based on GitLab job status
+        run: |
+          JOB_STATUS="${{ github.event.client_payload.job_status }}"
+          JOB_NAME="${{ github.event.client_payload.job_name }}"
+          ALLOW_FAILURE="${{ github.event.client_payload.allow_failure }}"
+          
+          if [[ "$JOB_STATUS" == "success" ]]; then
+            echo "✅ GitLab job succeeded - running success actions"
+            # Add your success-specific commands here
+          elif [[ "$JOB_STATUS" == "failed" ]]; then
+            if [[ "$ALLOW_FAILURE" == "true" ]]; then
+              echo "⚠️ GitLab job failed but failure is allowed"
+            else
+              echo "❌ GitLab job failed - running failure actions"
+              # Add your failure-specific commands here
+            fi
+          fi
+```
 
 ### Workflow Event Structure
 
@@ -167,18 +223,19 @@ Trigger related workflows in multiple repositories:
 
 1. **Workflows not triggering**
    - Check that `ENABLE_GITLAB_TO_GITHUB_TRIGGERING=true`
-   - Verify target repositories are correctly configured
-   - Ensure GitHub App has access to target repositories
+   - Ensure the target repository has a workflow listening for `repository_dispatch` events with type `gitlab-job-finished`
+   - Verify GitHub App has access to the repository
    - Check CI Bridge logs for error messages
 
-2. **Repository not found errors**
-   - Verify repository names are in "owner/repo" format
-   - Ensure GitHub App is installed on target repositories
-   - Check that the repository exists and is accessible
+2. **"No GitLab workflow triggers found" message**
+   - Verify your workflow file contains both `repository_dispatch` and `gitlab-job-finished` in the content
+   - Ensure the workflow file is committed to the repository
+   - Check the workflow file is in `.github/workflows/` directory
 
 3. **Workflow receives no data**
    - Verify workflow listens for `repository_dispatch` with type `gitlab-job-finished`
    - Check that GitLab job completed with a configured trigger status
+   - Ensure the repository is where GitLab CI status is being posted
 
 ### Debug Logging
 
@@ -189,9 +246,11 @@ OVERRIDE_LOGGING=DEBUG
 ```
 
 Look for log messages like:
-- `"GitLab to GitHub triggering is enabled, checking target repos"`
-- `"Triggering GitHub workflow for target repo: owner/repo"`
-- `"Successfully triggered GitHub workflow for owner/repo"`
+- `"GitLab to GitHub triggering is enabled, checking repository for workflows"`
+- `"Checking repository owner/repo for GitLab workflow triggers"`
+- `"Found GitLab workflow trigger in owner/repo: .github/workflows/example.yml"`
+- `"Repository owner/repo has GitLab workflow triggers, proceeding"`
+- `"Successfully triggered GitHub workflow (GitLab job: job-name, status: success)"`
 
 ### Testing
 
@@ -215,18 +274,10 @@ curl -X POST \
   }'
 ```
 
-## Migration from Standalone Setup
-
-If you previously used a standalone webhook handler, migrate by:
-
-1. Removing the standalone webhook handler deployment
-2. Updating GitLab webhooks to point to the CI Bridge endpoints
-3. Adding the new configuration variables to the CI Bridge
-4. Testing the integration with existing workflows
-
 ## Limitations
 
 - **Main branch only**: Workflows always run on the main branch regardless of GitLab branch
 - **Repository dispatch limits**: GitHub has rate limits on repository dispatch events
 - **GitHub App scope**: Only repositories with the GitHub App installed can be triggered
+- **Workflow detection**: Uses simple text search for `repository_dispatch` and `gitlab-job-finished` in workflow files
 - **Configuration updates**: Require CI Bridge restart to take effect

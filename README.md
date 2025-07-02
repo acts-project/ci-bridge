@@ -11,7 +11,8 @@ This piece of software acts as a relay between GitHub and the GitLab CI service.
 
 ### GitLab → GitHub Integration  
 - **NEW**: Triggers GitHub Actions workflows when GitLab jobs finish
-- Configurable target repositories and job status filters
+- Auto-detects target repository and compatible workflows
+- Configurable job status filters
 - Always runs workflows on the main branch
 - Provides detailed GitLab job information to GitHub workflows
 

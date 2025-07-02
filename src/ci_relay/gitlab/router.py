@@ -80,36 +80,33 @@ async def on_job_hook(
     if (app.config.ENABLE_GITLAB_TO_GITHUB_TRIGGERING and 
         job["status"] in app.config.GITLAB_TO_GITHUB_TRIGGER_ON_STATUS):
         
-        logger.debug("GitLab to GitHub triggering is enabled, checking target repos")
+        logger.debug("GitLab to GitHub triggering is enabled, checking repository for workflows")
         
-        # Trigger GitHub workflows for configured target repositories
-        for target_repo in app.config.GITLAB_TO_GITHUB_TARGET_REPOS:
-            logger.debug("Triggering GitHub workflow for target repo: %s", target_repo)
-            try:
-                success = await github.trigger_github_workflow(
-                    session=session,
-                    target_repo=target_repo,
-                    app=app,
-                    gitlab_job=job,
-                    gitlab_project=project,
-                    gitlab_pipeline=pipeline,
-                    config=app.config,
+        # Trigger GitHub workflow in the repository where the status is being posted
+        try:
+            success = await github.trigger_github_workflow(
+                gh=gh,
+                repo_url=bridge_payload["repo_url"],
+                gitlab_job=job,
+                gitlab_project=project,
+                gitlab_pipeline=pipeline,
+                config=app.config,
+            )
+            if success:
+                logger.info(
+                    "Successfully triggered GitHub workflow (GitLab job: %s, status: %s)",
+                    job["name"], job["status"]
                 )
-                if success:
-                    logger.info(
-                        "Successfully triggered GitHub workflow for %s (GitLab job: %s, status: %s)",
-                        target_repo, job["name"], job["status"]
-                    )
-                else:
-                    logger.warning(
-                        "Failed to trigger GitHub workflow for %s (GitLab job: %s, status: %s)",
-                        target_repo, job["name"], job["status"]
-                    )
-            except Exception as e:
-                logger.error(
-                    "Error triggering GitHub workflow for %s: %s",
-                    target_repo, e, exc_info=e
+            else:
+                logger.debug(
+                    "No GitHub workflow triggered (GitLab job: %s, status: %s)",
+                    job["name"], job["status"]
                 )
+        except Exception as e:
+            logger.error(
+                "Error triggering GitHub workflow: %s",
+                e, exc_info=e
+            )
 
 
 router = Router()

@@ -627,94 +627,120 @@ async def handle_rerun_comment(
     )
 
 
+def extract_repo_from_url(repo_url: str) -> str | None:
+    """
+    Extract owner/repo from GitHub repository URL.
+    
+    Args:
+        repo_url: GitHub repository URL (e.g. "https://api.github.com/repos/owner/repo")
+        
+    Returns:
+        Repository name in "owner/repo" format, or None if parsing fails
+    """
+    try:
+        # Handle both API URLs and web URLs
+        if "/repos/" in repo_url:
+            # API URL: https://api.github.com/repos/owner/repo
+            parts = repo_url.split("/repos/")
+            if len(parts) == 2:
+                return parts[1].rstrip("/")
+        elif "github.com/" in repo_url:
+            # Web URL: https://github.com/owner/repo
+            parts = repo_url.split("github.com/")
+            if len(parts) == 2:
+                return parts[1].rstrip("/").rstrip(".git")
+        return None
+    except Exception:
+        return None
+
+
+async def has_gitlab_workflow(gh: GitHubAPI, repo: str) -> bool:
+    """
+    Check if a repository has a workflow that listens for gitlab-job-finished repository_dispatch events.
+    
+    Args:
+        gh: Authenticated GitHub API client
+        repo: Repository name in "owner/repo" format
+        
+    Returns:
+        True if repository has a compatible workflow, False otherwise
+    """
+    try:
+        # Get all workflows in the repository
+        workflows_resp = await gh.getitem(f"/repos/{repo}/actions/workflows")
+        workflows = workflows_resp.get("workflows", [])
+        
+        logger.debug("Found %d workflows in repository %s", len(workflows), repo)
+        
+        # Check each workflow file for repository_dispatch trigger with gitlab-job-finished type
+        for workflow in workflows:
+            try:
+                # Get workflow content
+                workflow_resp = await gh.getitem(f"/repos/{repo}/contents/{workflow['path']}")
+                
+                # Decode base64 content
+                import base64
+                content = base64.b64decode(workflow_resp["content"]).decode("utf-8")
+                
+                # Simple check for repository_dispatch and gitlab-job-finished
+                # This is a basic text search, could be improved with YAML parsing
+                if ("repository_dispatch" in content and 
+                    "gitlab-job-finished" in content):
+                    logger.debug(
+                        "Found GitLab workflow trigger in %s: %s", 
+                        repo, workflow["path"]
+                    )
+                    return True
+                    
+            except Exception as e:
+                logger.debug("Error checking workflow %s in %s: %s", 
+                           workflow["path"], repo, e)
+                continue
+                
+        logger.debug("No GitLab workflow triggers found in repository %s", repo)
+        return False
+        
+    except Exception as e:
+        logger.debug("Error checking workflows in repository %s: %s", repo, e)
+        return False
+
+
 async def trigger_github_workflow(
-    session: aiohttp.ClientSession,
-    target_repo: str,
-    app,
+    gh: GitHubAPI,
+    repo_url: str,
     gitlab_job: dict[str, Any],
     gitlab_project: dict[str, Any],
     gitlab_pipeline: dict[str, Any],
     config: Config,
 ):
     """
-    Trigger a GitHub workflow via repository dispatch event.
+    Trigger a GitHub workflow via repository dispatch event if the repository has a compatible workflow.
     
     Args:
-        session: aiohttp client session
-        target_repo: Target GitHub repository in format "owner/repo"
-        app: Sanic app instance with GitHub App configuration
+        gh: Authenticated GitHub API client (from existing installation)
+        repo_url: GitHub repository URL from bridge payload
         gitlab_job: GitLab job data
         gitlab_project: GitLab project data
         gitlab_pipeline: GitLab pipeline data
         config: Application configuration
     """
-    logger.debug("Triggering GitHub workflow for repo: %s", target_repo)
-    
-    # Create GitHub API client using the app's installation
-    gh = gh_aiohttp.GitHubAPI(session, __name__)
-    jwt = get_jwt(app_id=config.APP_ID, private_key=config.PRIVATE_KEY)
-    
-    # Get app installations to find the right one for the target repo
-    try:
-        installations = await gh.getitem("/app/installations", jwt=jwt)
-    except Exception as e:
-        logger.error("Failed to get app installations: %s", e)
+    # Extract repository name from URL
+    repo = extract_repo_from_url(repo_url)
+    if not repo:
+        logger.warning("Could not extract repository name from URL: %s", repo_url)
         return False
     
-    # Find installation for the target repo
-    target_installation_id = None
-    for installation in installations:
-        try:
-            # Get installation access token
-            access_token_response = await get_installation_access_token(
-                gh,
-                installation_id=installation["id"],
-                app_id=config.APP_ID,
-                private_key=config.PRIVATE_KEY,
-            )
-            
-            # Create authenticated client for this installation
-            gh_auth = gh_aiohttp.GitHubAPI(
-                session,
-                __name__,
-                oauth_token=access_token_response["token"],
-            )
-            
-            # Check if target repo is accessible
-            try:
-                repo_info = await gh_auth.getitem(f"/repos/{target_repo}")
-                target_installation_id = installation["id"]
-                logger.debug("Found target repo in installation: %s", installation["id"])
-                break
-            except gidgethub.BadRequest as e:
-                if e.status_code == 404:
-                    continue  # Repo not in this installation
-                else:
-                    logger.warning("Error checking repo %s in installation %s: %s", 
-                                 target_repo, installation["id"], e)
-                    continue
-                    
-        except Exception as e:
-            logger.warning("Error checking installation %s: %s", installation["id"], e)
-            continue
+    logger.debug("Checking repository %s for GitLab workflow triggers", repo)
     
-    if target_installation_id is None:
-        logger.error("Target repository %s not found in any app installation", target_repo)
+    # Check if repository has a workflow that listens for gitlab-job-finished events
+    if not await has_gitlab_workflow(gh, repo):
+        logger.debug(
+            "Repository %s does not have GitLab workflow triggers, skipping", 
+            repo
+        )
         return False
     
-    # Get authenticated client for the target installation
-    access_token_response = await get_installation_access_token(
-        gh,
-        installation_id=target_installation_id,
-        app_id=config.APP_ID,
-        private_key=config.PRIVATE_KEY,
-    )
-    
-    gh_target = gh_aiohttp.GitHubAPI(
-        session,
-        __name__,
-        oauth_token=access_token_response["token"],
-    )
+    logger.debug("Repository %s has GitLab workflow triggers, proceeding", repo)
     
     # Prepare payload for GitHub repository dispatch
     dispatch_payload = {
@@ -741,21 +767,21 @@ async def trigger_github_workflow(
     # Send repository dispatch event
     try:
         if not config.STERILE:
-            await gh_target.post(
-                f"/repos/{target_repo}/dispatches",
+            await gh.post(
+                f"/repos/{repo}/dispatches",
                 data=dispatch_payload
             )
             logger.info(
                 "Successfully triggered GitHub workflow for repo %s (job: %s, status: %s)",
-                target_repo, gitlab_job["name"], gitlab_job["status"]
+                repo, gitlab_job["name"], gitlab_job["status"]
             )
         else:
             logger.info(
                 "STERILE mode: Would trigger GitHub workflow for repo %s (job: %s, status: %s)",
-                target_repo, gitlab_job["name"], gitlab_job["status"]
+                repo, gitlab_job["name"], gitlab_job["status"]
             )
         return True
         
     except Exception as e:
-        logger.error("Failed to trigger GitHub workflow for repo %s: %s", target_repo, e)
+        logger.error("Failed to trigger GitHub workflow for repo %s: %s", repo, e)
         return False
