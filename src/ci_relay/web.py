@@ -15,6 +15,7 @@ from ci_relay.github.router import router as github_router
 from ci_relay.gitlab.router import router as gitlab_router
 import ci_relay.github.utils as github_utils
 from ci_relay.exceptions import UnrecoverableError
+from ci_relay.metrics import metrics, get_metrics_content, get_metrics_content_type, MetricsContext
 
 
 def add_task(app: Sanic, task):
