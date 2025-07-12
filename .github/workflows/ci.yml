@@ -23,11 +23,20 @@ jobs:
       - name: Run tests
         run: just test-all
 
-      - name: Run pre-commit checks
-        run: just lint
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the latest version of uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Install just
+        uses: extractions/setup-just@v3
 
       - name: Run pre-commit checks
-        run: uv run nox -s pre_commit
+        run: just lint
 
   build:
     runs-on: ubuntu-latest
