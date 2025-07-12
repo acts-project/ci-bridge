@@ -35,7 +35,7 @@ async def on_pr(
     app: Sanic,
     gl: GitLabAPI,
 ):
-    data = PullRequestEvent(**event.data)  # type: ignore
+    data = PullRequestEvent.model_validate(event.data)
     logger.debug("Received pull_request event on PR #%d", data.pull_request.number)
 
     logger.debug("Action: %s", data.action)
@@ -66,7 +66,7 @@ async def on_check_run(
     app: Sanic,
     gl: GitLabAPI,
 ):
-    data = CheckRunEvent(**event.data)  # type: ignore
+    data = CheckRunEvent.model_validate(event.data)
     if data.action != "rerequested":
         return
     logger.debug("Received request for check rerun")
@@ -82,7 +82,7 @@ async def on_check_suite(
     app: Sanic,
     gl: GitLabAPI,
 ):
-    data = CheckSuiteEvent(**event.data)  # type: ignore
+    data = CheckSuiteEvent.model_validate(event.data)
     if data.action not in ("rerequested",):
         return
     config = cast(Config, app.config)
@@ -101,7 +101,7 @@ async def on_push(
     gl: GitLabAPI,
 ):
     logger.debug("Received push event")
-    data = PushEvent(**event.data)  # type: ignore
+    data = PushEvent.model_validate(event.data)
     config = cast(Config, app.config)
     gitlab_client = GitLab(session=session, gl=gl, config=config)
     await handle_push(gh, data, gitlab_client=gitlab_client, config=config)
@@ -115,7 +115,7 @@ async def on_comment(
     app: Sanic,
     gl: GitLabAPI,
 ):
-    data = IssueCommentEvent(**event.data)  # type: ignore
+    data = IssueCommentEvent.model_validate(event.data)
     logger.debug("Received issue_comment event")
     logger.debug("Action: %s", data.action)
 
