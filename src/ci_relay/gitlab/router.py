@@ -7,11 +7,13 @@ from sanic import Sanic
 from sanic.log import logger
 import gidgetlab.aiohttp
 import asyncio
+from typing import cast
 
 import ci_relay.github.utils as github
 from ci_relay.gitlab import GitLab
 from ci_relay.gitlab.utils import should_ignore_job
 from ci_relay.signature import Signature
+from ci_relay.config import Config
 from ci_relay.exceptions import (
     InvalidBuildError,
     SignatureMismatchError,
@@ -37,19 +39,20 @@ async def on_job_hook(
     )
 
     # Check if job should be ignored based on patterns
+    config = cast(Config, app.config)
     logger.debug(
         "Checking if job should be ignored '%s' (patterns: %s)",
         job["name"],
-        app.config.GITLAB_IGNORED_JOB_PATTERNS,
+        config.GITLAB_IGNORED_JOB_PATTERNS,
     )
-    if should_ignore_job(job["name"], app.config.GITLAB_IGNORED_JOB_PATTERNS):
+    if should_ignore_job(job["name"], config.GITLAB_IGNORED_JOB_PATTERNS):
         logger.info(f"Ignoring job '{job['name']}' based on configured patterns")
         return
 
     bridge_payload = variables["BRIDGE_PAYLOAD"]
     signature = variables["TRIGGER_SIGNATURE"]
 
-    if not Signature(app.config.TRIGGER_SECRET).verify(bridge_payload, signature):
+    if not Signature(config.TRIGGER_SECRET).verify(bridge_payload, signature):
         logger.error("Signatures do not match")
         raise SignatureMismatchError("Signature mismatch")
 
@@ -73,13 +76,13 @@ async def on_job_hook(
         head_sha=bridge_payload["head_sha"],
         gh=gh,
         gitlab_client=gitlab_client,
-        config=app.config,
+        config=config,
     )
 
     # Check if GitLab to GitHub workflow triggering is enabled
     if (
-        app.config.ENABLE_GITLAB_TO_GITHUB_TRIGGERING
-        and job["status"] in app.config.GITLAB_TO_GITHUB_TRIGGER_ON_STATUS
+        config.ENABLE_GITLAB_TO_GITHUB_TRIGGERING
+        and job["status"] in config.GITLAB_TO_GITHUB_TRIGGER_ON_STATUS
     ):
         logger.debug(
             "GitLab to GitHub triggering is enabled, checking repository for workflows"
@@ -101,7 +104,7 @@ async def on_job_hook(
                 gitlab_job=job,
                 gitlab_project=project,
                 gitlab_pipeline=pipeline,
-                config=app.config,
+                config=config,
             )
             if success:
                 logger.info(
@@ -139,5 +142,6 @@ async def _on_job_hook(
     gl: gidgetlab.aiohttp.GitLabAPI,
     app: Sanic,
 ):
-    gitlab_client = GitLab(session=session, gl=gl, config=app.config)
+    config = cast(Config, app.config)
+    gitlab_client = GitLab(session=session, gl=gl, config=config)
     await on_job_hook(event, gitlab_client=gitlab_client, app=app, session=session)

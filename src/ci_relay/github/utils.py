@@ -608,7 +608,7 @@ async def handle_rerun_comment(
         logger.debug("Comment is not on a PR, ignoring")
         return
     pr_resp = await gh.getitem(event.issue.pull_request.url)
-    pr = PullRequest(**pr_resp)
+    pr = PullRequest.model_validate(pr_resp)
     logger.debug("PR is: %s", pr.number)
 
     # Trigger pipeline rerun

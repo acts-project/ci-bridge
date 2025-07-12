@@ -65,13 +65,13 @@ on:
 jobs:
   gitlab-triggered-job:
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           ref: main  # Always use main branch
-          
+
       - name: Display GitLab job information
         run: |
           echo "🚀 GitLab job has finished!"
@@ -82,13 +82,13 @@ jobs:
           echo "📁 Project: ${{ github.event.client_payload.project_name }}"
           echo "🌿 Branch: ${{ github.event.client_payload.ref }}"
           echo "📝 Commit SHA: ${{ github.event.client_payload.commit_sha }}"
-          
+
       - name: Custom actions based on GitLab job status
         run: |
           JOB_STATUS="${{ github.event.client_payload.job_status }}"
           JOB_NAME="${{ github.event.client_payload.job_name }}"
           ALLOW_FAILURE="${{ github.event.client_payload.allow_failure }}"
-          
+
           if [[ "$JOB_STATUS" == "success" ]]; then
             echo "✅ GitLab job succeeded - running success actions"
             # Add your success-specific commands here
@@ -121,7 +121,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: main  # Always uses main branch
-          
+
       - name: Access GitLab job data
         run: |
           echo "Job Status: ${{ github.event.client_payload.job_status }}"

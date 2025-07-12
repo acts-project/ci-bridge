@@ -4,6 +4,7 @@ from enum import StrEnum
 
 class User(BaseModel):
     login: str
+    id: int | None = None
 
 
 class Repository(BaseModel):
@@ -11,6 +12,7 @@ class Repository(BaseModel):
     url: str
     full_name: str
     clone_url: str
+    user: User | None = None
 
 
 class PullRequestHead(BaseModel):

@@ -84,7 +84,8 @@ async def handle_github_webhook(request, *, app: Sanic):
 def create_app(*, config: Config | None = None):
     app = Sanic("ci-relay")
     if config is None:
-        config = Config()
+        # BaseSettings will load from environment variables automatically
+        config = Config()  # type: ignore
 
     app.update_config(config.model_dump())
 
@@ -97,7 +98,8 @@ def create_app(*, config: Config | None = None):
     @app.listener("before_server_start")
     async def init(app, loop):
         # Print configuration on startup (with sensitive values masked)
-        config.print_config()
+        if config is not None:
+            config.print_config()
 
         logger.debug("Creating aiohttp session")
         async with aiohttp.ClientSession(loop=loop) as session:
@@ -140,6 +142,7 @@ def create_app(*, config: Config | None = None):
                 github_ok = False
 
             try:
+                assert config is not None
                 gl = gidgetlab.aiohttp.GitLabAPI(
                     session,
                     requester="acts",

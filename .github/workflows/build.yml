@@ -21,6 +21,9 @@ jobs:
       - name: Run nox tests
         run: uv run nox
 
+      - name: Run pre-commit checks
+        run: uv run nox -s pre_commit
+
   build:
     runs-on: ubuntu-latest
     continue-on-error: true

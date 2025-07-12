@@ -35,6 +35,8 @@ dev-dependencies = [
     "sanic-testing>=24.6.0",
     "pytest-aiohttp>=1.1.0",
     "nox>=2025.2.9",
+    "pre-commit>=4.0.0",
+    "ty>=0.0.1a14",
 ]
 
 [build-system]

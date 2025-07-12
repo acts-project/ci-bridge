@@ -10,7 +10,6 @@ from ci_relay.gitlab.models import PipelineTriggerData
 from ci_relay.signature import Signature
 
 
-
 class GitLab:
     def __init__(self, session: aiohttp.ClientSession, gl: GitLabAPI, config: Config):
         self.session = session
