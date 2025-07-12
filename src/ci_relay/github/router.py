@@ -5,6 +5,7 @@ from gidgethub.abc import GitHubAPI
 from gidgethub.sansio import Event
 from gidgetlab.abc import GitLabAPI
 import aiohttp
+from typing import cast
 
 from ci_relay.github.utils import (
     handle_synchronize,
@@ -21,6 +22,7 @@ from ci_relay.github.models import (
     IssueCommentEvent,
 )
 from ci_relay.gitlab import GitLab
+from ci_relay.config import Config
 
 router = Router()
 
@@ -33,7 +35,7 @@ async def on_pr(
     app: Sanic,
     gl: GitLabAPI,
 ):
-    data = PullRequestEvent(**event.data)
+    data = PullRequestEvent(**event.data)  # type: ignore
     logger.debug("Received pull_request event on PR #%d", data.pull_request.number)
 
     logger.debug("Action: %s", data.action)
@@ -43,10 +45,11 @@ async def on_pr(
     if data.action not in ("synchronize", "opened", "reopened", "ready_for_review"):
         return
 
-    gitlab_client = GitLab(session=session, gl=gl, config=app.config)
+    config = cast(Config, app.config)
+    gitlab_client = GitLab(session=session, gl=gl, config=config)
 
     return await handle_synchronize(
-        gh, session, data, gitlab_client=gitlab_client, config=app.config
+        gh, session, data, gitlab_client=gitlab_client, config=config
     )
 
 
@@ -63,11 +66,12 @@ async def on_check_run(
     app: Sanic,
     gl: GitLabAPI,
 ):
-    data = CheckRunEvent(**event.data)
+    data = CheckRunEvent(**event.data)  # type: ignore
     if data.action != "rerequested":
         return
     logger.debug("Received request for check rerun")
-    await handle_rerequest(gh, session, data, config=app.config)
+    config = cast(Config, app.config)
+    await handle_rerequest(gh, session, data, config=config)
 
 
 @router.register("check_suite")
@@ -78,12 +82,13 @@ async def on_check_suite(
     app: Sanic,
     gl: GitLabAPI,
 ):
-    data = CheckSuiteEvent(**event.data)
+    data = CheckSuiteEvent(**event.data)  # type: ignore
     if data.action not in ("rerequested",):
         return
-    gitlab_client = GitLab(session=session, gl=gl, config=app.config)
+    config = cast(Config, app.config)
+    gitlab_client = GitLab(session=session, gl=gl, config=config)
     await handle_check_suite(
-        gh, session, data, gitlab_client=gitlab_client, config=app.config
+        gh, session, data, gitlab_client=gitlab_client, config=config
     )
 
 
@@ -96,9 +101,10 @@ async def on_push(
     gl: GitLabAPI,
 ):
     logger.debug("Received push event")
-    data = PushEvent(**event.data)
-    gitlab_client = GitLab(session=session, gl=gl, config=app.config)
-    await handle_push(gh, data, gitlab_client=gitlab_client, config=app.config)
+    data = PushEvent(**event.data)  # type: ignore
+    config = cast(Config, app.config)
+    gitlab_client = GitLab(session=session, gl=gl, config=config)
+    await handle_push(gh, data, gitlab_client=gitlab_client, config=config)
 
 
 @router.register("issue_comment")
@@ -109,11 +115,10 @@ async def on_comment(
     app: Sanic,
     gl: GitLabAPI,
 ):
-    data = IssueCommentEvent(**event.data)
+    data = IssueCommentEvent(**event.data)  # type: ignore
     logger.debug("Received issue_comment event")
     logger.debug("Action: %s", data.action)
 
-    gitlab_client = GitLab(session=session, gl=gl, config=app.config)
-    await handle_comment(
-        gh, session, data, gitlab_client=gitlab_client, config=app.config
-    )
+    config = cast(Config, app.config)
+    gitlab_client = GitLab(session=session, gl=gl, config=config)
+    await handle_comment(gh, session, data, gitlab_client=gitlab_client, config=config)

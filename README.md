@@ -9,7 +9,7 @@ This piece of software acts as a relay between GitHub and the GitLab CI service.
 - Creates GitHub check runs with GitLab job status and logs
 - Supports team-based access control and job filtering
 
-### GitLab → GitHub Integration  
+### GitLab → GitHub Integration
 - **NEW**: Triggers GitHub Actions workflows when GitLab jobs finish
 - Auto-detects target repository and compatible workflows
 - Configurable job status filters

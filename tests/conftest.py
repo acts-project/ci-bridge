@@ -20,7 +20,7 @@ def config():
         GITLAB_TRIGGER_URL="abc",
         GITLAB_API_URL="abc",
         GITLAB_PROJECT_ID=123,
-        TRIGGER_SECRET="abc",
+        TRIGGER_SECRET=b"abc",
         GITLAB_WEBHOOK_SECRET="abc",
         OVERRIDE_LOGGING="DEBUG",
         EXTRA_USERS=["test_user"],
@@ -42,8 +42,7 @@ def app(monkeypatch, config) -> Sanic:
 
     app = create_app(config=config)
     TestManager(app)
-    yield app
-    app.stop()
+    return app
 
 
 @pytest_asyncio.fixture

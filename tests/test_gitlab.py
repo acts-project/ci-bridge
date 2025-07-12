@@ -101,7 +101,7 @@ async def test_trigger_pipeline_success(monkeypatch, config):
     assert "variables[BRIDGE_PAYLOAD]" in call_args["data"]
     payload = call_args["data"]["variables[BRIDGE_PAYLOAD]"]
     # Check this is valid JSON
-    PipelineTriggerData(**json.loads(payload))
+    PipelineTriggerData(**json.loads(payload))  # type: ignore
     assert "variables[TRIGGER_SIGNATURE]" in call_args["data"]
     assert (
         call_args["data"]["variables[CONFIG_URL]"]

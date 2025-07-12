@@ -40,7 +40,10 @@ class Config(BaseSettings):
 
     # GitLab to GitHub workflow triggering configuration
     ENABLE_GITLAB_TO_GITHUB_TRIGGERING: bool = False
-    GITLAB_TO_GITHUB_TRIGGER_ON_STATUS: list[str] = ["success", "failed"]  # Which job statuses trigger workflows
+    GITLAB_TO_GITHUB_TRIGGER_ON_STATUS: list[str] = [
+        "success",
+        "failed",
+    ]  # Which job statuses trigger workflows
 
     def print_config(self):
         """Print configuration values with sensitive attributes masked"""

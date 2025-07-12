@@ -30,7 +30,7 @@ def load_sample_data(filename):
 
 def test_check_suite_requested_model():
     data = load_sample_data("check_suite_requested.json")
-    event = CheckSuiteEvent(**data)
+    event = CheckSuiteEvent(**data)  # type: ignore
 
     assert event.action == "requested"
     assert isinstance(event.check_suite, CheckSuite)
@@ -48,7 +48,7 @@ def test_check_suite_requested_model():
 
 def test_check_suite_rerequested_model():
     data = load_sample_data("check_suite_rerequested.json")
-    event = CheckSuiteEvent(**data)
+    event = CheckSuiteEvent(**data)  # type: ignore
 
     assert event.action == "rerequested"
     assert isinstance(event.check_suite, CheckSuite)
@@ -67,7 +67,7 @@ def test_check_suite_rerequested_model():
 
 def test_push_event_model():
     data = load_sample_data("push.json")
-    event = PushEvent(**data)
+    event = PushEvent(**data)  # type: ignore
 
     assert event.ref == "refs/heads/main"
     assert event.after == "def456ghi789"
@@ -80,7 +80,7 @@ def test_push_event_model():
 
 def test_pull_request_event_model():
     data = load_sample_data("pull_request_synchronize.json")
-    event = PullRequestEvent(**data)
+    event = PullRequestEvent(**data)  # type: ignore
 
     assert event.action == "synchronize"
     assert event.pull_request.number == 123
@@ -96,7 +96,7 @@ def test_pull_request_event_model():
 
 def test_issue_comment_event_model():
     data = load_sample_data("issue_comment_created_issue.json")
-    event = IssueCommentEvent(**data)
+    event = IssueCommentEvent(**data)  # type: ignore
 
     assert event.action == "created"
     assert event.comment.body == "test comment"
@@ -115,7 +115,7 @@ def test_issue_comment_event_model():
 
 def test_issue_comment_event_model_pr():
     data = load_sample_data("issue_comment_created_pr.json")
-    event = IssueCommentEvent(**data)
+    event = IssueCommentEvent(**data)  # type: ignore
 
     assert event.action == "created"
     assert event.comment.body == "/rerun"
@@ -134,7 +134,7 @@ def test_issue_comment_event_model_pr():
 
 def test_pr_api_response_model():
     data = load_sample_data("pr_api_response.json")
-    pr = PullRequest(**data)
+    pr = PullRequest(**data)  # type: ignore
 
     print(pr)
     assert pr.number == 123
@@ -165,10 +165,6 @@ def test_pr_api_response_model():
             full_name="test_org/test_repo",
             url="https://api.github.com/repos/test_org/test_repo",
             clone_url="https://github.com/test_org/test_repo.git",
-        ),
-        user=User(
-            login="test_user",
-            id=12345,
         ),
     )
 
