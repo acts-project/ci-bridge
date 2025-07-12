@@ -4,6 +4,14 @@ run:
 test:
     uv run pytest
 
+test-all:
+    uv run --frozen --python 3.11 pytest
+    uv run --frozen --python 3.12 pytest
+    uv run --frozen --python 3.13 pytest
+
+lint:
+    uv run --frozen pre-commit run --all-files
+
 image_url := "ghcr.io/acts-project/ci-bridge"
 sha := "sha-" + `git rev-parse --short HEAD`
 image:
