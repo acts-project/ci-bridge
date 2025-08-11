@@ -1,5 +1,5 @@
 run:
-    dotenvx run -- uv run sanic ci_relay.web:create_app -d
+    dotenvx run -- uv run sanic ci_relay.web:create_app -d -p 5001
 
 test:
     uv run pytest
@@ -22,5 +22,4 @@ image:
 
 
 deploy: image
-    sleep 1
     oc import-image ci-bridge --all
