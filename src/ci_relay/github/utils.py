@@ -688,7 +688,6 @@ async def has_gitlab_workflow(gh: GitHubAPI, repo: str) -> bool:
                         "Workflow %s not found in %s (404)",
                         workflow["path"],
                         repo,
-                        e,
                         exc_info=True,
                     )
                 else:
