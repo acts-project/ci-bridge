@@ -685,10 +685,7 @@ async def has_gitlab_workflow(gh: GitHubAPI, repo: str) -> bool:
             except gidgethub.BadRequest as e:
                 if e.status_code == 404:
                     logger.debug(
-                        "Workflow %s not found in %s (404)",
-                        workflow["path"],
-                        repo,
-                        exc_info=True,
+                        "Workflow %s not found in %s (404)", workflow["path"], repo
                     )
                 else:
                     logger.debug(
