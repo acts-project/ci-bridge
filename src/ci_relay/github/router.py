@@ -102,6 +102,7 @@ async def on_push(
 ):
     logger.debug("Received push event")
     data = PushEvent.model_validate(event.data)
+    logger.debug("Ref: %s", data.ref)
     config = cast(Config, app.config)
     gitlab_client = GitLab(session=session, gl=gl, config=config)
     await handle_push(gh, data, gitlab_client=gitlab_client, config=config)

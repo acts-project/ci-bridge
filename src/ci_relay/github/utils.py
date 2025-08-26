@@ -458,7 +458,7 @@ async def handle_pipeline_status(
 
     log = await gitlab_client.get_job_log(project["id"], job["id"])
 
-    github_limit = 65535 - 200  # tolerance
+    github_limit = 65535 - 500  # tolerance
     logger.debug("Log length: %d (max %d)", len(log), github_limit)
 
     lines = log.split("\n")
