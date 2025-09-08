@@ -45,6 +45,8 @@ class Config(BaseSettings):
         "failed",
     ]  # Which job statuses trigger workflows
 
+    COMMENT_TRIGGER_COMMANDS: list[str] = ["/rerun", "/retry", "/ci-bridge-run"]
+
     def print_config(self):
         """Print configuration values with sensitive attributes masked"""
         sensitive_attrs = {
