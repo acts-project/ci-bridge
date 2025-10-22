@@ -9,12 +9,14 @@ from sanic.log import logger
 import cachetools
 from aiolimiter import AsyncLimiter
 import tenacity
+from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 
 from ci_relay.config import Config
 from ci_relay.github.router import router as github_router
 from ci_relay.gitlab.router import router as gitlab_router
 import ci_relay.github.utils as github_utils
 from ci_relay.exceptions import UnrecoverableError
+from ci_relay import metrics
 
 
 def add_task(app: Sanic, task):
@@ -27,24 +29,29 @@ def add_task(app: Sanic, task):
     retry=tenacity.retry_if_not_exception_type(UnrecoverableError),
 )
 async def handle_gitlab_webhook(request, *, app: Sanic):
-    async with aiohttp.ClientSession(loop=app.loop) as session:
-        event = GitLabEvent.from_http(
-            request.headers, request.body, secret=app.config.GITLAB_WEBHOOK_SECRET
-        )
+    # Record webhook reception
+    metrics.webhooks_received_total.labels('gitlab', request.headers.get('X-Gitlab-Event', 'unknown')).inc()
+    
+    with metrics.track_webhook_processing('gitlab', request.headers.get('X-Gitlab-Event', 'unknown')):
+        async with aiohttp.ClientSession(loop=app.loop) as session:
+            event = GitLabEvent.from_http(
+                request.headers, request.body, secret=app.config.GITLAB_WEBHOOK_SECRET
+            )
 
-        gl = gidgetlab.aiohttp.GitLabAPI(
-            session,
-            requester="acts",
-            access_token=app.config.GITLAB_ACCESS_TOKEN,
-            url=app.config.GITLAB_API_URL,
-        )
+            gl = gidgetlab.aiohttp.GitLabAPI(
+                session,
+                requester="acts",
+                access_token=app.config.GITLAB_ACCESS_TOKEN,
+                url=app.config.GITLAB_API_URL,
+            )
 
-        logger.debug("Dispatching event %s", event.event)
-        try:
-            await gitlab_router.dispatch(event, session=session, app=app, gl=gl)
-        except BaseException as e:
-            logger.error("GitLab dispatch caught exception: %s", e, exc_info=e)
-            raise
+            logger.debug("Dispatching event %s", event.event)
+            try:
+                await gitlab_router.dispatch(event, session=session, app=app, gl=gl)
+            except BaseException as e:
+                logger.error("GitLab dispatch caught exception: %s", e, exc_info=e)
+                metrics.app_errors_total.labels(e.__class__.__name__, 'gitlab_router').inc()
+                raise
 
 
 @tenacity.retry(
@@ -53,32 +60,38 @@ async def handle_gitlab_webhook(request, *, app: Sanic):
     retry=tenacity.retry_if_not_exception_type(UnrecoverableError),
 )
 async def handle_github_webhook(request, *, app: Sanic):
-    async with aiohttp.ClientSession(loop=app.loop) as session:
-        event = GitHubEvent.from_http(
-            request.headers, request.body, secret=app.config.WEBHOOK_SECRET
-        )
+    # Record webhook reception
+    event_type = request.headers.get('X-GitHub-Event', 'unknown')
+    metrics.webhooks_received_total.labels('github', event_type).inc()
+    
+    with metrics.track_webhook_processing('github', event_type):
+        async with aiohttp.ClientSession(loop=app.loop) as session:
+            event = GitHubEvent.from_http(
+                request.headers, request.body, secret=app.config.WEBHOOK_SECRET
+            )
 
-        assert "installation" in event.data
-        installation_id = event.data["installation"]["id"]
-        logger.debug("Installation id: %s", installation_id)
+            assert "installation" in event.data
+            installation_id = event.data["installation"]["id"]
+            logger.debug("Installation id: %s", installation_id)
 
-        gh = await github_utils.client_for_installation(
-            app=app, installation_id=installation_id, session=session
-        )
+            gh = await github_utils.client_for_installation(
+                app=app, installation_id=installation_id, session=session
+            )
 
-        gl = gidgetlab.aiohttp.GitLabAPI(
-            session,
-            requester="acts",
-            access_token=app.config.GITLAB_ACCESS_TOKEN,
-            url=app.config.GITLAB_API_URL,
-        )
+            gl = gidgetlab.aiohttp.GitLabAPI(
+                session,
+                requester="acts",
+                access_token=app.config.GITLAB_ACCESS_TOKEN,
+                url=app.config.GITLAB_API_URL,
+            )
 
-        logger.debug("Dispatching event %s", event.event)
-        try:
-            await github_router.dispatch(event, session=session, gh=gh, app=app, gl=gl)
-        except BaseException as e:
-            logger.error("GitHub dispatch caught exception: %s", e, exc_info=e)
-            raise
+            logger.debug("Dispatching event %s", event.event)
+            try:
+                await github_router.dispatch(event, session=session, gh=gh, app=app, gl=gl)
+            except BaseException as e:
+                logger.error("GitHub dispatch caught exception: %s", e, exc_info=e)
+                metrics.app_errors_total.labels(e.__class__.__name__, 'github_router').inc()
+                raise
 
 
 def create_app(*, config: Config | None = None):
@@ -112,6 +125,14 @@ def create_app(*, config: Config | None = None):
     async def index(request):
         logger.debug("status check")
         return response.text("ok")
+
+    @app.route("/metrics")
+    async def metrics_endpoint(request):
+        """Prometheus metrics endpoint"""
+        return response.text(
+            generate_latest(),
+            content_type=CONTENT_TYPE_LATEST
+        )
 
     @app.route("/health")
     async def health(request):
